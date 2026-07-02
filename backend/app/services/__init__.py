@@ -13,3 +13,5 @@ from . import audio_generation_service
 from . import audio_service
 from . import subtitle_generation_service
 from . import subtitle_service
+from . import render_service
+from . import render_generation_service

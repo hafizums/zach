@@ -249,7 +249,9 @@ const ProjectDetail = () => {
           <p className="text-sm text-gray-500 mt-1">
             {["DRAFT_CREATED", "TOPIC_ANALYZED", "RESEARCH_NOTES_READY", "SCRIPT_READY", "SCENE_PLAN_READY", "VIDEO_PROMPTS_READY", "IMAGES_GENERATED"].includes(project.status) 
               ? "Approve assets first"
-              : "Ready to generate"}
+              : ["CLIPS_GENERATED", "VOICEOVER_READY"].includes(project.status)
+                ? "Ready to generate"
+                : "Audio & Subtitles approved"}
           </p>
         </div>
         <Link 
@@ -261,6 +263,29 @@ const ProjectDetail = () => {
           }`}
         >
           Audio & Subtitles
+        </Link>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800">Final Render</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {["DRAFT_CREATED", "TOPIC_ANALYZED", "RESEARCH_NOTES_READY", "SCRIPT_READY", "SCENE_PLAN_READY", "VIDEO_PROMPTS_READY", "IMAGES_GENERATED", "CLIPS_GENERATED", "VOICEOVER_READY"].includes(project.status) 
+              ? "Approve audio & subtitles first"
+              : project.status === "SUBTITLES_READY" 
+                ? "Ready to render"
+                : "Final render approved"}
+          </p>
+        </div>
+        <Link 
+          to={`/projects/${projectId}/final-render`} 
+          className={`px-4 py-2 font-medium rounded ${
+            ["DRAFT_CREATED", "TOPIC_ANALYZED", "RESEARCH_NOTES_READY", "SCRIPT_READY", "SCENE_PLAN_READY", "VIDEO_PROMPTS_READY", "IMAGES_GENERATED", "CLIPS_GENERATED", "VOICEOVER_READY"].includes(project.status)
+              ? "bg-gray-200 text-gray-400 cursor-not-allowed pointer-events-none"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          Final Render
         </Link>
       </div>
     </div>

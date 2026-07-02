@@ -7,3 +7,4 @@ from .prompt import ImagePrompt, VideoPrompt
 from .generated_asset import GeneratedImage, GeneratedClip
 from .audio import Voiceover
 from .subtitle import SubtitleSegment
+from .final_render import FinalRender

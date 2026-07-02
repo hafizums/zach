@@ -9,6 +9,7 @@ import ScenePlanner from "./pages/ScenePlanner";
 import PromptReview from "./pages/PromptReview";
 import AssetGeneration from "./pages/AssetGeneration";
 import AudioSubtitles from "./pages/AudioSubtitles";
+import FinalRender from "./pages/FinalRender";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Route path="/projects/:projectId/prompts" element={<PromptReview />} />
         <Route path="/projects/:projectId/assets" element={<AssetGeneration />} />
         <Route path="/projects/:projectId/audio-subtitles" element={<AudioSubtitles />} />
+        <Route path="/projects/:projectId/final-render" element={<FinalRender />} />
       </Routes>
     </AppShell>
   );

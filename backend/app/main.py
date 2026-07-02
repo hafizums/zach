@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import health, projects, scripts, scenes, prompts, assets, audio, subtitles
+from app.api import health, projects, scripts, scenes, prompts, assets, audio, subtitles, renders
 from app.core.storage import init_storage
 from app.core.database import Base, engine
 
@@ -29,3 +29,4 @@ app.include_router(prompts.router, prefix="/api", tags=["prompts"])
 app.include_router(assets.router, prefix="/api", tags=["assets"])
 app.include_router(audio.router, prefix="/api", tags=["audio"])
 app.include_router(subtitles.router, prefix="/api", tags=["subtitles"])
+app.include_router(renders.router, prefix="/api", tags=["renders"])
