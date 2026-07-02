@@ -216,7 +216,7 @@ def test_clip_estimate_no_active_images():
     data = res.json()
     assert data["ok"] is False
     assert data["active_image_count"] == 0
-    assert "active images" in data["message"].lower()
+    assert "before images" in data["message"].lower()
 
 
 # --- Test 12: Clip estimate returns ok=false when video prompts missing ---
@@ -237,7 +237,31 @@ def test_clip_estimate_no_video_prompts():
     )
     data = res.json()
     assert data["ok"] is False
-    assert "video prompts" in data["message"].lower()
+    assert "before images" in data["message"].lower()
+
+
+# --- Test 12b: Clip estimate returns ok=false when project status is before IMAGES_GENERATED ---
+def test_clip_estimate_before_images_generated():
+    proj_res = client.post("/api/projects/", json={
+        "title": "clip-est-before-imgs", "topic": "Testing", "duration_target": 40,
+    })
+    project_id = proj_res.json()["id"]
+    script_res = client.post(f"/api/projects/{project_id}/scripts/generate", json={})
+    client.post(f"/api/scripts/{script_res.json()['id']}/approve")
+    client.post(f"/api/projects/{project_id}/scenes/generate")
+    client.post(f"/api/projects/{project_id}/scenes/approve")
+    client.post(f"/api/projects/{project_id}/prompts/generate")
+    client.post(f"/api/projects/{project_id}/prompts/approve")
+    # Status is VIDEO_PROMPTS_READY — images not generated yet
+
+    res = client.post(
+        f"/api/projects/{project_id}/assets/clips/estimate",
+        json={"provider_name": "mock", "model_name": "mock-video"},
+    )
+    data = res.json()
+    assert data["ok"] is False
+    assert "before images" in data["message"].lower()
+    assert data["estimated_jobs"] == 0
 
 
 # --- Test 13: Mock clip generation does not require confirmation ---

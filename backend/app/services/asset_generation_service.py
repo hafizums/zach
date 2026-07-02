@@ -482,6 +482,22 @@ def estimate_clip_generation(
             "message": "No approved script found.",
         }
 
+    valid_statuses = ["IMAGES_GENERATED", "CLIPS_GENERATED", "VOICEOVER_READY", "SUBTITLES_READY", "FINAL_RENDER_READY"]
+    if project.status not in valid_statuses:
+        return {
+            "ok": False,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "modality": "video",
+            "scene_count": 0,
+            "approved_video_prompt_count": 0,
+            "active_image_count": 0,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "Cannot generate clips before images are generated.",
+        }
+
     scenes = scene_service.list_script_scenes(db, approved_script.id)
     approved_video_count = 0
     active_image_count = 0

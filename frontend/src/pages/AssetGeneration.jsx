@@ -278,7 +278,7 @@ const AssetGeneration = () => {
                 <span className="font-medium">{confirmModal.estimate.provider_name}/{confirmModal.estimate.model_name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Images:</span>
+                <span className="text-gray-500">{confirmModal.type?.includes("clip") ? "Clips:" : "Images:"}</span>
                 <span className="font-medium">{confirmModal.estimate.estimated_jobs} image{confirmModal.estimate.estimated_jobs !== 1 ? "s" : ""}</span>
               </div>
               <div className="flex justify-between">
@@ -488,7 +488,22 @@ const AssetGeneration = () => {
                               <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded">
                                 {pair.clip.provider_name}/{pair.clip.model_name}
                               </span>
+                              {pair.clip.provider_job_id && (
+                                <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-400 rounded font-mono" title={pair.clip.provider_job_id}>
+                                  {pair.clip.provider_job_id.slice(0, 12)}...
+                                </span>
+                              )}
                             </div>
+                          )}
+                          {pair.clip.file_url.startsWith('http') && (
+                            <a
+                              href={pair.clip.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-purple-500 hover:underline block"
+                            >
+                              Open full video &nearr;
+                            </a>
                           )}
                           {retryErrors[pair.scene_id] && (
                             <div className="text-[10px] text-red-500 bg-red-50 p-1 rounded">{retryErrors[pair.scene_id]}</div>
