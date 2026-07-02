@@ -6,6 +6,7 @@ import CreateProject from "./pages/CreateProject";
 import ProjectDetail from "./pages/ProjectDetail";
 import ScriptReview from "./pages/ScriptReview";
 import ScenePlanner from "./pages/ScenePlanner";
+import PromptReview from "./pages/PromptReview";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/projects/:projectId" element={<ProjectDetail />} />
         <Route path="/projects/:projectId/script" element={<ScriptReview />} />
         <Route path="/projects/:projectId/scenes" element={<ScenePlanner />} />
+        <Route path="/projects/:projectId/prompts" element={<PromptReview />} />
       </Routes>
     </AppShell>
   );

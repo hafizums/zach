@@ -22,3 +22,5 @@ class Scene(Base):
 
     project = relationship("VideoProject", back_populates="scenes")
     script = relationship("Script", back_populates="scenes")
+    image_prompts = relationship("ImagePrompt", back_populates="scene", cascade="all, delete-orphan")
+    video_prompts = relationship("VideoPrompt", back_populates="scene", cascade="all, delete-orphan")
