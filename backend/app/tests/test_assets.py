@@ -19,15 +19,21 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
+
 client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def run_around_tests():
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    from app.services.model_catalog_service import seed_default_mock_models
+    seed_default_mock_models(db)
+    db.close()
     yield
 
+    app.dependency_overrides.clear()
 def _create_approved_prompts_plan():
     proj_res = client.post("/api/projects/", json={"title": "Asset Test Proj", "topic": "Testing", "duration_target": 40})
     project_id = proj_res.json()["id"]

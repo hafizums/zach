@@ -9,7 +9,7 @@ const AppShell = ({ children }) => {
           AI Explainer Shorts Generator
         </Link>
         <nav className="flex space-x-4">
-          <Link to="/providers" className="text-gray-600 hover:text-blue-600 font-medium">
+          <Link to="/provider-settings" className="text-gray-600 hover:text-blue-600 font-medium">
             Provider Settings
           </Link>
         </nav>

@@ -9,12 +9,14 @@ from app.models.prompt import ImagePrompt, VideoPrompt
 from app.models.generated_asset import GeneratedImage
 from app.schemas.asset_schema import GeneratedImageCreate, GeneratedClipCreate
 from app.schemas.provider_schema import ProviderRunLogCreate
-from app.services import provider_registry, provider_run_service
+from app.services import provider_registry, provider_run_service, provider_preflight_service
 
 def generate_mock_image(db: Session, project: VideoProject, script: Script, scene: Scene, prompt: ImagePrompt) -> GeneratedImageCreate:
     """
     Deterministically generates a mock image using registered image provider.
     """
+    provider_preflight_service.require_provider_model(db, "mock", "mock-image", "image")
+    
     provider = provider_registry.get_provider("mock", "image")
     job = provider.generate_image(prompt.prompt_text, "9:16")
     
@@ -59,6 +61,8 @@ def generate_mock_clip(db: Session, project: VideoProject, script: Script, scene
     """
     Deterministically generates a mock clip using registered video provider.
     """
+    provider_preflight_service.require_provider_model(db, "mock", "mock-video", "video")
+    
     provider = provider_registry.get_provider("mock", "video")
     job = provider.generate_video(source_image.file_url, prompt.prompt_text, prompt.duration_seconds, "9:16")
     

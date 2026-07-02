@@ -17,7 +17,7 @@ function App() {
     <AppShell>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/providers" element={<ProviderSettings />} />
+        <Route path="/provider-settings" element={<ProviderSettings />} />
         <Route path="/projects/new" element={<CreateProject />} />
         <Route path="/projects/:projectId" element={<ProjectDetail />} />
         <Route path="/projects/:projectId/script" element={<ScriptReview />} />

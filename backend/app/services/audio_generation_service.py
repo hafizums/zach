@@ -5,13 +5,14 @@ from app.models.script import Script
 from app.models.scene import Scene
 from app.schemas.audio_schema import VoiceoverCreate
 from app.schemas.provider_schema import ProviderRunLogCreate
-from app.services import provider_registry, provider_run_service
+from app.services import provider_registry, provider_run_service, provider_preflight_service
 
 def generate_mock_voiceover(db: Session, project: VideoProject, script: Script, scenes: List[Scene]) -> VoiceoverCreate:
     """
     Deterministically generates a mock voiceover using registered audio provider.
     Uses concatenated scene narration.
     """
+    provider_preflight_service.require_provider_model(db, "mock", "mock-audio", "audio")
     # Concatenate scene narration
     full_narration = " ".join([scene.narration_text for scene in scenes if scene.narration_text])
     if not full_narration:

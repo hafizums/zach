@@ -1,10 +1,12 @@
 from sqlalchemy.orm import Session
 from app.models.video_project import VideoProject
 from app.schemas.script_schema import ScriptCreate
-from app.services import script_service, provider_registry, provider_run_service
+from app.services import script_service, provider_registry, provider_run_service, provider_preflight_service
 from app.schemas.provider_schema import ProviderRunLogCreate
 
 def generate_script_for_project(db: Session, project: VideoProject) -> ScriptCreate:
+    provider_preflight_service.require_provider_model(db, "mock", "mock-llm", "llm")
+    
     provider = provider_registry.get_provider("mock", "llm")
     prompt = f"Topic: {project.topic}, Language: {project.language}, Duration Target: {project.duration_target}s"
     

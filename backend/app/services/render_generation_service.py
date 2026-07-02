@@ -9,7 +9,7 @@ from app.models.generated_asset import GeneratedClip
 from app.models.scene import Scene
 from app.schemas.render_schema import FinalRenderCreate
 from app.schemas.provider_schema import ProviderRunLogCreate
-from app.services import provider_registry, provider_run_service
+from app.services import provider_registry, provider_run_service, provider_preflight_service
 
 def generate_mock_render(
     db: Session,
@@ -23,6 +23,7 @@ def generate_mock_render(
     Builds a deterministic manifest and returns a FinalRenderCreate schema.
     No FFmpeg execution happens here.
     """
+    provider_preflight_service.require_provider_model(db, "mock", "mock-render", "render")
     
     clip_manifests = []
     for scene in scenes:

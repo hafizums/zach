@@ -36,12 +36,14 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
+
 
 client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_db] = override_get_db
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     
@@ -53,6 +55,7 @@ def setup_db():
     
     yield
 
+    app.dependency_overrides.clear()
 def test_default_mock_models_seeded():
     response = client.get("/api/providers/models")
     assert response.status_code == 200

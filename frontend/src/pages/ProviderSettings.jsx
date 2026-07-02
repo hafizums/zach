@@ -12,6 +12,8 @@ const ProviderSettings = () => {
     const [runs, setRuns] = useState([]);
     const [loading, setLoading] = useState(true);
     const [preflightMsg, setPreflightMsg] = useState(null);
+    const [panelPreflightMsg, setPanelPreflightMsg] = useState(null);
+    const [panelInput, setPanelInput] = useState({ provider_name: '', model_name: '', modality: '' });
 
     const fetchData = async () => {
         setLoading(true);
@@ -60,6 +62,21 @@ const ProviderSettings = () => {
         }
     };
 
+    const handlePanelPreflight = async (e) => {
+        e.preventDefault();
+        try {
+            const res = await preflightProvider(panelInput);
+            setPanelPreflightMsg({
+                ok: res.ok,
+                message: `[${panelInput.model_name}] Preflight: ${res.message}`
+            });
+            setTimeout(() => setPanelPreflightMsg(null), 5000);
+        } catch (error) {
+            setPanelPreflightMsg({ ok: false, message: "Preflight request failed." });
+            setTimeout(() => setPanelPreflightMsg(null), 5000);
+        }
+    };
+
     if (loading) {
         return <div className="p-8">Loading Provider Settings...</div>;
     }
@@ -75,14 +92,66 @@ const ProviderSettings = () => {
             )}
             
             <div className="mb-10">
+                <h2 className="text-2xl font-semibold mb-4 text-gray-700">Test Preflight</h2>
+                <div className="bg-white shadow rounded-lg p-6">
+                    <form onSubmit={handlePanelPreflight} className="flex flex-col space-y-4 max-w-md">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Provider Name</label>
+                            <input 
+                                type="text" 
+                                className="w-full border-gray-300 rounded-md shadow-sm p-2 border" 
+                                value={panelInput.provider_name} 
+                                onChange={(e) => setPanelInput({...panelInput, provider_name: e.target.value})} 
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Model Name</label>
+                            <input 
+                                type="text" 
+                                className="w-full border-gray-300 rounded-md shadow-sm p-2 border" 
+                                value={panelInput.model_name} 
+                                onChange={(e) => setPanelInput({...panelInput, model_name: e.target.value})} 
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Modality</label>
+                            <input 
+                                type="text" 
+                                className="w-full border-gray-300 rounded-md shadow-sm p-2 border" 
+                                value={panelInput.modality} 
+                                onChange={(e) => setPanelInput({...panelInput, modality: e.target.value})} 
+                                required
+                            />
+                        </div>
+                        <button type="submit" className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 w-full sm:w-auto self-start">
+                            Run Preflight
+                        </button>
+                        
+                        {panelPreflightMsg && (
+                            <div className={`p-4 mt-4 rounded ${panelPreflightMsg.ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                {panelPreflightMsg.message}
+                            </div>
+                        )}
+                    </form>
+                </div>
+            </div>
+
+            <div className="mb-10">
                 <h2 className="text-2xl font-semibold mb-4 text-gray-700">Model Catalog</h2>
-                <div className="bg-white shadow rounded-lg overflow-hidden">
+                <div className="bg-white shadow rounded-lg overflow-hidden overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Display Name</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Modality</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Is Mock</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost Hint</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aspect Ratios</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Durations</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
@@ -91,8 +160,13 @@ const ProviderSettings = () => {
                             {models.map(model => (
                                 <tr key={model.id}>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{model.provider_name}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.display_name} ({model.model_name})</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.model_name}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.display_name}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.modality}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.is_mock ? 'Yes' : 'No'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.cost_hint || '-'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.supports_aspect_ratio || '-'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.supports_duration_seconds || '-'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${model.is_enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                                             {model.is_enabled ? 'Enabled' : 'Disabled'}

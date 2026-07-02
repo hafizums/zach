@@ -44,3 +44,14 @@ def preflight_provider_model(db: Session, provider_name: str, model_name: str, m
         modality=modality,
         message="Preflight checks passed."
     )
+
+from fastapi import HTTPException
+
+def require_provider_model(db: Session, provider_name: str, model_name: str, modality: str) -> None:
+    """
+    Validates that a provider model is available for generation.
+    Raises HTTPException(status_code=400) if the model is disabled, missing, or lacks an adapter.
+    """
+    result = preflight_provider_model(db, provider_name, model_name, modality)
+    if not result.ok:
+        raise HTTPException(status_code=400, detail=result.message)
