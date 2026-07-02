@@ -73,3 +73,8 @@ class ScenePromptPairRead(BaseModel):
     scene_number: int
     image_prompt: Optional[ImagePromptRead] = None
     video_prompt: Optional[VideoPromptRead] = None
+
+from app.schemas.provider_schema import GenerationRequest
+
+class PromptGenerateRequest(GenerationRequest):
+    pass

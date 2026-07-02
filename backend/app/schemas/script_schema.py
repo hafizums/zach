@@ -29,6 +29,8 @@ class ScriptRead(ScriptBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-class ScriptGenerateRequest(BaseModel):
+from app.schemas.provider_schema import GenerationRequest
+
+class ScriptGenerateRequest(GenerationRequest):
     # Optional parameters for script generation tuning could go here
     pass

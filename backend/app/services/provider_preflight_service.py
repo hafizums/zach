@@ -35,6 +35,18 @@ def preflight_provider_model(db: Session, provider_name: str, model_name: str, m
             message=f"Provider '{provider_name}' does not have a registered adapter for modality '{modality}'."
         )
 
+    # 4. Special handling for openai api key
+    import os
+    if provider_name == "openai" and modality == "llm":
+        if not os.getenv("OPENAI_API_KEY"):
+            return ProviderPreflightResult(
+                ok=False,
+                provider_name=provider_name,
+                model_name=model_name,
+                modality=modality,
+                message="OPENAI_API_KEY is not configured"
+            )
+
     return ProviderPreflightResult(
         ok=True,
         provider_name=provider_name,

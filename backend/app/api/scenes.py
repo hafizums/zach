@@ -3,13 +3,16 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.core.database import get_db
-from app.schemas.scene_schema import SceneRead, SceneUpdate
+from app.schemas.scene_schema import SceneRead, SceneUpdate, SceneGenerateRequest
 from app.services import scene_service, scene_planner_service, project_service, script_service
 
 router = APIRouter()
 
 @router.post("/projects/{project_id}/scenes/generate", response_model=List[SceneRead])
-def generate_scenes(project_id: int, db: Session = Depends(get_db)):
+def generate_scenes(project_id: int, request: SceneGenerateRequest = None, db: Session = Depends(get_db)):
+    if request is None:
+        request = SceneGenerateRequest()
+
     project = project_service.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -25,7 +28,13 @@ def generate_scenes(project_id: int, db: Session = Depends(get_db)):
     scene_service.delete_project_scenes_for_script(db, approved_script.id)
     
     # Generate new scenes
-    scenes_in = scene_planner_service.generate_mock_scenes(project, approved_script)
+    scenes_in = scene_planner_service.generate_mock_scenes(
+        db,
+        project, 
+        approved_script,
+        provider_name=request.provider_name,
+        model_name=request.model_name
+    )
     scenes = scene_service.bulk_create_scenes(db, scenes_in)
     
     return scenes

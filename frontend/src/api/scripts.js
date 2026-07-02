@@ -1,7 +1,7 @@
 import apiClient from "./client";
 
-export const generateScript = async (projectId) => {
-  const response = await apiClient.post(`/api/projects/${projectId}/scripts/generate`, {});
+export const generateScript = async (projectId, options = {}) => {
+  const response = await apiClient.post(`/api/projects/${projectId}/scripts/generate`, options);
   return response.data;
 };
 

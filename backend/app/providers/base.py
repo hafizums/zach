@@ -9,7 +9,11 @@ class ProviderJob:
 
 class LLMProvider(ABC):
     @abstractmethod
-    def generate_text(self, prompt: str, schema: Optional[Dict] = None) -> Dict:
+    def generate_text(self, prompt: str, model_name: str, system_prompt: Optional[str] = None) -> Dict:
+        pass
+        
+    @abstractmethod
+    def generate_structured_json(self, prompt: str, model_name: str, schema: Dict, system_prompt: Optional[str] = None) -> Dict:
         pass
 
 class ImageProvider(ABC):

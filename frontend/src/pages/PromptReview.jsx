@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProject } from "../api/projects";
 import { listProjectPrompts, generatePrompts, updateImagePrompt, updateVideoPrompt, approvePrompts } from "../api/prompts";
+import { listEnabledProviderModels } from "../api/providers";
 
 const PromptReview = () => {
   const { projectId } = useParams();
@@ -13,6 +14,10 @@ const PromptReview = () => {
   const [generating, setGenerating] = useState(false);
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState(null);
+  
+  const [llmModels, setLlmModels] = useState([]);
+  const [selectedProvider, setSelectedProvider] = useState("mock");
+  const [selectedModel, setSelectedModel] = useState("mock-llm");
   
   // Track edits per scene using a dictionary keyed by scene_id
   const [editData, setEditData] = useState({});
@@ -31,6 +36,24 @@ const PromptReview = () => {
       setPromptPairs(loadedPairs);
       
       initializeEdits(loadedPairs);
+      
+      try {
+        const models = await listEnabledProviderModels();
+        const llms = models.filter(m => m.modality === 'llm');
+        setLlmModels(llms);
+        if (llms.length > 0) {
+            const mock = llms.find(m => m.provider_name === 'mock' && m.model_name === 'mock-llm');
+            if (mock) {
+                setSelectedProvider(mock.provider_name);
+                setSelectedModel(mock.model_name);
+            } else {
+                setSelectedProvider(llms[0].provider_name);
+                setSelectedModel(llms[0].model_name);
+            }
+        }
+      } catch (err) {
+        console.error("Failed to load models", err);
+      }
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to load prompt review data");
     } finally {
@@ -53,7 +76,10 @@ const PromptReview = () => {
     try {
       setGenerating(true);
       setError(null);
-      const newPairs = await generatePrompts(projectId);
+      const newPairs = await generatePrompts(projectId, {
+        provider_name: selectedProvider,
+        model_name: selectedModel
+      });
       setPromptPairs(newPairs);
       initializeEdits(newPairs);
     } catch (err) {
@@ -183,13 +209,33 @@ const PromptReview = () => {
         <div className="bg-white p-12 text-center rounded-lg border border-gray-100 shadow-sm">
           <h3 className="text-xl font-medium text-gray-700 mb-2">No prompts generated</h3>
           <p className="text-gray-500 mb-6">Generate image and video prompts based on your approved scene plan.</p>
-          <button 
-            onClick={handleGenerate} 
-            disabled={generating}
-            className="px-6 py-3 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {generating ? "Generating..." : "Generate Prompts"}
-          </button>
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-col items-start gap-1">
+              <label className="text-sm text-gray-600 font-medium">LLM Provider</label>
+              <select
+                value={`${selectedProvider}|${selectedModel}`}
+                onChange={(e) => {
+                  const [p, m] = e.target.value.split('|');
+                  setSelectedProvider(p);
+                  setSelectedModel(m);
+                }}
+                className="border border-gray-300 rounded p-2 text-sm min-w-[200px]"
+              >
+                {llmModels.map(m => (
+                  <option key={`${m.provider_name}|${m.model_name}`} value={`${m.provider_name}|${m.model_name}`}>
+                    {m.display_name} ({m.provider_name})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button 
+              onClick={handleGenerate} 
+              disabled={generating}
+              className="px-6 py-3 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {generating ? "Generating..." : "Generate Prompts"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -199,7 +245,23 @@ const PromptReview = () => {
             <div>
               <span className="font-semibold text-gray-800">{promptPairs.length} Scene Prompts</span>
             </div>
-            <div className="space-x-4">
+            <div className="space-x-4 flex items-center">
+              <select
+                value={`${selectedProvider}|${selectedModel}`}
+                onChange={(e) => {
+                  const [p, m] = e.target.value.split('|');
+                  setSelectedProvider(p);
+                  setSelectedModel(m);
+                }}
+                disabled={generating || planApproved}
+                className="border border-gray-300 rounded p-2 text-sm max-w-[200px]"
+              >
+                {llmModels.map(m => (
+                  <option key={`${m.provider_name}|${m.model_name}`} value={`${m.provider_name}|${m.model_name}`}>
+                    {m.display_name}
+                  </option>
+                ))}
+              </select>
               <button 
                 onClick={handleGenerate} 
                 disabled={generating || planApproved}

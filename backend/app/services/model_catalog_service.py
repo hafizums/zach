@@ -13,6 +13,21 @@ def seed_default_mock_models(db: Session) -> None:
         {"provider_name": "mock", "model_name": "mock-render", "display_name": "Mock Renderer", "modality": "render", "cost_hint": "mock-free"}
     ]
     
+    import os
+    import json
+    openai_default_model = os.getenv("OPENAI_DEFAULT_LLM_MODEL", "gpt-4o-mini")
+    openai_seed = {
+        "provider_name": "openai",
+        "model_name": openai_default_model,
+        "display_name": "OpenAI LLM",
+        "modality": "llm",
+        "is_enabled": False,
+        "is_mock": False,
+        "cost_hint": "paid",
+        "default_params_json": json.dumps({"temperature": 0.7})
+    }
+    defaults.append(openai_seed)
+    
     for default in defaults:
         existing = db.query(ProviderModel).filter(
             ProviderModel.provider_name == default["provider_name"],

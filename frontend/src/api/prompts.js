@@ -1,7 +1,7 @@
 import apiClient from "./client";
 
-export const generatePrompts = async (projectId) => {
-  const response = await apiClient.post(`/api/projects/${projectId}/prompts/generate`, {});
+export const generatePrompts = async (projectId, options = {}) => {
+  const response = await apiClient.post(`/api/projects/${projectId}/prompts/generate`, options);
   return response.data;
 };
 

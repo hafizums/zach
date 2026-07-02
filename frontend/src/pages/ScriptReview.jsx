@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProject } from "../api/projects";
 import { getLatestScript, generateScript, updateScript, approveScript } from "../api/scripts";
+import { listEnabledProviderModels } from "../api/providers";
 
 const ScriptReview = () => {
   const { projectId } = useParams();
@@ -13,6 +14,10 @@ const ScriptReview = () => {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  
+  const [llmModels, setLlmModels] = useState([]);
+  const [selectedProvider, setSelectedProvider] = useState("mock");
+  const [selectedModel, setSelectedModel] = useState("mock-llm");
   
   const [editData, setEditData] = useState(null);
 
@@ -34,6 +39,24 @@ const ScriptReview = () => {
         // 404 means no script yet
         setScript(null);
       }
+      try {
+        const models = await listEnabledProviderModels();
+        const llms = models.filter(m => m.modality === 'llm');
+        setLlmModels(llms);
+        if (llms.length > 0) {
+            // Check if mock is available to set as default, else first
+            const mock = llms.find(m => m.provider_name === 'mock' && m.model_name === 'mock-llm');
+            if (mock) {
+                setSelectedProvider(mock.provider_name);
+                setSelectedModel(mock.model_name);
+            } else {
+                setSelectedProvider(llms[0].provider_name);
+                setSelectedModel(llms[0].model_name);
+            }
+        }
+      } catch (err) {
+        console.error("Failed to load models", err);
+      }
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to load project data");
     } finally {
@@ -45,7 +68,10 @@ const ScriptReview = () => {
     try {
       setGenerating(true);
       setError(null);
-      const newScript = await generateScript(projectId);
+      const newScript = await generateScript(projectId, { 
+        provider_name: selectedProvider, 
+        model_name: selectedModel 
+      });
       setScript(newScript);
       setEditData(newScript);
     } catch (err) {
@@ -124,13 +150,33 @@ const ScriptReview = () => {
         <div className="bg-white p-12 text-center rounded-lg border border-gray-100 shadow-sm">
           <h3 className="text-xl font-medium text-gray-700 mb-2">No script found</h3>
           <p className="text-gray-500 mb-6">Generate the first script for this project.</p>
-          <button 
-            onClick={handleGenerate} 
-            disabled={generating}
-            className="px-6 py-3 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {generating ? "Generating..." : "Generate Script"}
-          </button>
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-col items-start gap-1">
+              <label className="text-sm text-gray-600 font-medium">LLM Provider</label>
+              <select
+                value={`${selectedProvider}|${selectedModel}`}
+                onChange={(e) => {
+                  const [p, m] = e.target.value.split('|');
+                  setSelectedProvider(p);
+                  setSelectedModel(m);
+                }}
+                className="border border-gray-300 rounded p-2 text-sm min-w-[200px]"
+              >
+                {llmModels.map(m => (
+                  <option key={`${m.provider_name}|${m.model_name}`} value={`${m.provider_name}|${m.model_name}`}>
+                    {m.display_name} ({m.provider_name})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button 
+              onClick={handleGenerate} 
+              disabled={generating}
+              className="px-6 py-3 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {generating ? "Generating..." : "Generate Script"}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-6">
@@ -141,13 +187,31 @@ const ScriptReview = () => {
                 {script.status}
               </span>
             </div>
-            <button 
-              onClick={handleGenerate} 
-              disabled={generating || script.status === 'APPROVED'}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50"
-            >
-              {generating ? "Regenerating..." : "Regenerate New Version"}
-            </button>
+            <div className="flex items-center gap-2">
+              <select
+                value={`${selectedProvider}|${selectedModel}`}
+                onChange={(e) => {
+                  const [p, m] = e.target.value.split('|');
+                  setSelectedProvider(p);
+                  setSelectedModel(m);
+                }}
+                disabled={generating || script.status === 'APPROVED'}
+                className="border border-gray-300 rounded p-2 text-sm max-w-[200px]"
+              >
+                {llmModels.map(m => (
+                  <option key={`${m.provider_name}|${m.model_name}`} value={`${m.provider_name}|${m.model_name}`}>
+                    {m.display_name}
+                  </option>
+                ))}
+              </select>
+              <button 
+                onClick={handleGenerate} 
+                disabled={generating || script.status === 'APPROVED'}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50"
+              >
+                {generating ? "Regenerating..." : "Regenerate New Version"}
+              </button>
+            </div>
           </div>
 
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 space-y-4">

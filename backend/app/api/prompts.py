@@ -3,13 +3,16 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.core.database import get_db
-from app.schemas.prompt_schema import ImagePromptRead, ImagePromptUpdate, VideoPromptRead, VideoPromptUpdate, ScenePromptPairRead
+from app.schemas.prompt_schema import ImagePromptRead, ImagePromptUpdate, VideoPromptRead, VideoPromptUpdate, ScenePromptPairRead, PromptGenerateRequest
 from app.services import prompt_service, prompt_generation_service, project_service, script_service, scene_service
 
 router = APIRouter()
 
 @router.post("/projects/{project_id}/prompts/generate", response_model=List[ScenePromptPairRead])
-def generate_prompts(project_id: int, db: Session = Depends(get_db)):
+def generate_prompts(project_id: int, request: PromptGenerateRequest = None, db: Session = Depends(get_db)):
+    if request is None:
+        request = PromptGenerateRequest()
+
     project = project_service.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -30,7 +33,14 @@ def generate_prompts(project_id: int, db: Session = Depends(get_db)):
     prompt_service.delete_project_prompts_for_script(db, approved_script.id)
     
     # Generate new prompts
-    image_prompts_in, video_prompts_in = prompt_generation_service.generate_mock_prompt_pairs(project, approved_script, scenes)
+    image_prompts_in, video_prompts_in = prompt_generation_service.generate_mock_prompt_pairs(
+        db,
+        project, 
+        approved_script, 
+        scenes,
+        provider_name=request.provider_name,
+        model_name=request.model_name
+    )
     prompt_service.bulk_create_prompt_pairs(db, image_prompts_in, video_prompts_in)
     
     return prompt_service.list_project_prompt_pairs(db, project_id)

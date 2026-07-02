@@ -8,7 +8,7 @@ from app.providers.mock_provider import (
 
 def test_mock_llm_provider():
     provider = MockLLMProvider()
-    result = provider.generate_text("Test prompt")
+    result = provider.generate_text("Test prompt", "mock-llm")
     assert "script" in result
     assert "hook" in result
 

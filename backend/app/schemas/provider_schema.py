@@ -65,3 +65,7 @@ class ProviderPreflightResult(BaseModel):
     model_name: str
     modality: str
     message: str
+
+class GenerationRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-llm"

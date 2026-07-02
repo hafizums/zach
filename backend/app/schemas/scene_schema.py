@@ -32,3 +32,8 @@ class SceneRead(SceneBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+from app.schemas.provider_schema import GenerationRequest
+
+class SceneGenerateRequest(GenerationRequest):
+    pass

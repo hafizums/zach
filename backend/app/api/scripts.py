@@ -11,11 +11,19 @@ router = APIRouter()
 
 @router.post("/projects/{project_id}/scripts/generate", response_model=ScriptRead)
 def generate_script(project_id: int, request: ScriptGenerateRequest = None, db: Session = Depends(get_db)):
+    if request is None:
+        request = ScriptGenerateRequest()
+        
     project = project_service.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    script_in = script_generation_service.generate_script_for_project(db, project)
+    script_in = script_generation_service.generate_script_for_project(
+        db, 
+        project, 
+        provider_name=request.provider_name, 
+        model_name=request.model_name
+    )
     script = script_service.create_script(db, script_in)
     return script
 

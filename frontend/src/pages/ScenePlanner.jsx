@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProject } from "../api/projects";
 import { listProjectScenes, generateScenes, updateScene, approveScenePlan } from "../api/scenes";
+import { listEnabledProviderModels } from "../api/providers";
 
 const ScenePlanner = () => {
   const { projectId } = useParams();
@@ -13,6 +14,10 @@ const ScenePlanner = () => {
   const [generating, setGenerating] = useState(false);
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState(null);
+  
+  const [llmModels, setLlmModels] = useState([]);
+  const [selectedProvider, setSelectedProvider] = useState("mock");
+  const [selectedModel, setSelectedModel] = useState("mock-llm");
   
   // Track edits per scene using a dictionary keyed by scene.id
   const [editData, setEditData] = useState({});
@@ -33,6 +38,24 @@ const ScenePlanner = () => {
       const edits = {};
       loadedScenes.forEach(s => { edits[s.id] = { ...s }; });
       setEditData(edits);
+      
+      try {
+        const models = await listEnabledProviderModels();
+        const llms = models.filter(m => m.modality === 'llm');
+        setLlmModels(llms);
+        if (llms.length > 0) {
+            const mock = llms.find(m => m.provider_name === 'mock' && m.model_name === 'mock-llm');
+            if (mock) {
+                setSelectedProvider(mock.provider_name);
+                setSelectedModel(mock.model_name);
+            } else {
+                setSelectedProvider(llms[0].provider_name);
+                setSelectedModel(llms[0].model_name);
+            }
+        }
+      } catch (err) {
+        console.error("Failed to load models", err);
+      }
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to load scene planner data");
     } finally {
@@ -44,7 +67,10 @@ const ScenePlanner = () => {
     try {
       setGenerating(true);
       setError(null);
-      const newScenes = await generateScenes(projectId);
+      const newScenes = await generateScenes(projectId, {
+        provider_name: selectedProvider,
+        model_name: selectedModel
+      });
       setScenes(newScenes);
       
       const edits = {};
@@ -136,13 +162,33 @@ const ScenePlanner = () => {
         <div className="bg-white p-12 text-center rounded-lg border border-gray-100 shadow-sm">
           <h3 className="text-xl font-medium text-gray-700 mb-2">No scenes generated</h3>
           <p className="text-gray-500 mb-6">Let the AI generate a starting scene plan based on your approved script.</p>
-          <button 
-            onClick={handleGenerate} 
-            disabled={generating}
-            className="px-6 py-3 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {generating ? "Generating..." : "Generate Scene Plan"}
-          </button>
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-col items-start gap-1">
+              <label className="text-sm text-gray-600 font-medium">LLM Provider</label>
+              <select
+                value={`${selectedProvider}|${selectedModel}`}
+                onChange={(e) => {
+                  const [p, m] = e.target.value.split('|');
+                  setSelectedProvider(p);
+                  setSelectedModel(m);
+                }}
+                className="border border-gray-300 rounded p-2 text-sm min-w-[200px]"
+              >
+                {llmModels.map(m => (
+                  <option key={`${m.provider_name}|${m.model_name}`} value={`${m.provider_name}|${m.model_name}`}>
+                    {m.display_name} ({m.provider_name})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button 
+              onClick={handleGenerate} 
+              disabled={generating}
+              className="px-6 py-3 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {generating ? "Generating..." : "Generate Scene Plan"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -153,7 +199,23 @@ const ScenePlanner = () => {
               <span className="font-semibold text-gray-800">{scenes.length} Scenes</span>
               <span className="text-gray-500 ml-4">Total Duration: {scenes.reduce((acc, s) => acc + s.duration_seconds, 0)}s</span>
             </div>
-            <div className="space-x-4">
+            <div className="space-x-4 flex items-center">
+              <select
+                value={`${selectedProvider}|${selectedModel}`}
+                onChange={(e) => {
+                  const [p, m] = e.target.value.split('|');
+                  setSelectedProvider(p);
+                  setSelectedModel(m);
+                }}
+                disabled={generating || planApproved}
+                className="border border-gray-300 rounded p-2 text-sm max-w-[200px]"
+              >
+                {llmModels.map(m => (
+                  <option key={`${m.provider_name}|${m.model_name}`} value={`${m.provider_name}|${m.model_name}`}>
+                    {m.display_name}
+                  </option>
+                ))}
+              </select>
               <button 
                 onClick={handleGenerate} 
                 disabled={generating || planApproved}

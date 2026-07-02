@@ -2,7 +2,7 @@ from typing import Dict, Optional, Any
 from .base import LLMProvider, ImageProvider, VideoProvider, AudioProvider, TranscriptionProvider, ProviderJob
 
 class MockLLMProvider(LLMProvider):
-    def generate_text(self, prompt: str, schema: Optional[Dict] = None) -> Dict:
+    def generate_text(self, prompt: str, model_name: str, system_prompt: Optional[str] = None) -> Dict:
         return {
             "hook": "This is a mock hook that grabs your attention.",
             "script": "Here is the mock educational script body that explains the topic clearly and concisely without being too long. It is just the right length for a short video.",
@@ -11,6 +11,13 @@ class MockLLMProvider(LLMProvider):
             "payoff": "And that is the mock payoff.",
             "keywords": ["mock", "educational"]
         }
+
+    def generate_structured_json(self, prompt: str, model_name: str, schema: Dict, system_prompt: Optional[str] = None) -> Dict:
+        # For mock, we simply return the same deterministic result.
+        # In the context of our app, structured generation for scenes/prompts will need to return
+        # specific shapes, but currently those mock generators have their own logic in their services.
+        # We'll just return a dummy structured response here for generic compatibility.
+        return self.generate_text(prompt, model_name, system_prompt)
 
 class MockImageProvider(ImageProvider):
     def generate_image(self, prompt: str, aspect_ratio: str) -> ProviderJob:
