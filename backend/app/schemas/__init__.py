@@ -8,3 +8,4 @@ from .asset_schema import GeneratedImageCreate, GeneratedImageRead, GeneratedCli
 from .audio_schema import VoiceoverCreate, VoiceoverRead
 from .subtitle_schema import SubtitleSegmentCreate, SubtitleSegmentUpdate, SubtitleSegmentRead, AudioSubtitleBundleRead
 from .render_schema import FinalRenderCreate, FinalRenderRead, RenderManifestRead
+from .provider_schema import ProviderModelCreate, ProviderModelUpdate, ProviderModelRead, ProviderRunLogCreate, ProviderRunLogRead, ProviderPreflightRequest, ProviderPreflightResult

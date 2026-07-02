@@ -10,12 +10,14 @@ import PromptReview from "./pages/PromptReview";
 import AssetGeneration from "./pages/AssetGeneration";
 import AudioSubtitles from "./pages/AudioSubtitles";
 import FinalRender from "./pages/FinalRender";
+import ProviderSettings from "./pages/ProviderSettings";
 
 function App() {
   return (
     <AppShell>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/providers" element={<ProviderSettings />} />
         <Route path="/projects/new" element={<CreateProject />} />
         <Route path="/projects/:projectId" element={<ProjectDetail />} />
         <Route path="/projects/:projectId/script" element={<ScriptReview />} />

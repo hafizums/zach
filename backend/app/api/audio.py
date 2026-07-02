@@ -33,7 +33,7 @@ def generate_project_voiceover(project_id: int, db: Session = Depends(get_db)):
             
     audio_service.deactivate_project_voiceovers(db, project_id)
     
-    voiceover_in = audio_generation_service.generate_mock_voiceover(project, approved_script, scenes)
+    voiceover_in = audio_generation_service.generate_mock_voiceover(db, project, approved_script, scenes)
     voiceover = audio_service.create_voiceover(db, voiceover_in)
     
     if project.status == "CLIPS_GENERATED":

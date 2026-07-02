@@ -1,20 +1,34 @@
 from typing import List, Tuple
 import uuid
 import base64
+from sqlalchemy.orm import Session
 from app.models.video_project import VideoProject
 from app.models.script import Script
 from app.models.scene import Scene
 from app.models.prompt import ImagePrompt, VideoPrompt
 from app.models.generated_asset import GeneratedImage
 from app.schemas.asset_schema import GeneratedImageCreate, GeneratedClipCreate
-from app.providers.mock_provider import MockImageProvider, MockVideoProvider
+from app.schemas.provider_schema import ProviderRunLogCreate
+from app.services import provider_registry, provider_run_service
 
-def generate_mock_image(project: VideoProject, script: Script, scene: Scene, prompt: ImagePrompt) -> GeneratedImageCreate:
+def generate_mock_image(db: Session, project: VideoProject, script: Script, scene: Scene, prompt: ImagePrompt) -> GeneratedImageCreate:
     """
-    Deterministically generates a mock image using MockImageProvider.
+    Deterministically generates a mock image using registered image provider.
     """
-    provider = MockImageProvider()
+    provider = provider_registry.get_provider("mock", "image")
     job = provider.generate_image(prompt.prompt_text, "9:16")
+    
+    provider_run_service.create_run_log(db, ProviderRunLogCreate(
+        project_id=project.id,
+        scene_id=scene.id,
+        provider_name="mock",
+        model_name="mock-image",
+        modality="image",
+        operation="image_generation",
+        provider_job_id=job.job_id,
+        request_json={"prompt_text": prompt.prompt_text, "aspect_ratio": "9:16"},
+        response_json={"job_id": job.job_id}
+    ))
     
     # Create a simple SVG with text for the placeholder
     text_content = f"Scene {scene.scene_number}"
@@ -41,12 +55,24 @@ def generate_mock_image(project: VideoProject, script: Script, scene: Scene, pro
         is_active=True
     )
 
-def generate_mock_clip(project: VideoProject, script: Script, scene: Scene, prompt: VideoPrompt, source_image: GeneratedImage) -> GeneratedClipCreate:
+def generate_mock_clip(db: Session, project: VideoProject, script: Script, scene: Scene, prompt: VideoPrompt, source_image: GeneratedImage) -> GeneratedClipCreate:
     """
-    Deterministically generates a mock clip using MockVideoProvider.
+    Deterministically generates a mock clip using registered video provider.
     """
-    provider = MockVideoProvider()
+    provider = provider_registry.get_provider("mock", "video")
     job = provider.generate_video(source_image.file_url, prompt.prompt_text, prompt.duration_seconds, "9:16")
+    
+    provider_run_service.create_run_log(db, ProviderRunLogCreate(
+        project_id=project.id,
+        scene_id=scene.id,
+        provider_name="mock",
+        model_name="mock-video",
+        modality="video",
+        operation="clip_generation",
+        provider_job_id=job.job_id,
+        request_json={"source_image": source_image.file_url, "prompt_text": prompt.prompt_text, "duration": prompt.duration_seconds, "aspect_ratio": "9:16"},
+        response_json={"job_id": job.job_id}
+    ))
     
     file_url = f"/storage/projects/{project.id}/clips/scene_{scene.scene_number}_clip_{job.job_id}.mp4"
     

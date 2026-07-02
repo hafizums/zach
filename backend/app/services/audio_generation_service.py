@@ -1,13 +1,15 @@
 from typing import List
+from sqlalchemy.orm import Session
 from app.models.video_project import VideoProject
 from app.models.script import Script
 from app.models.scene import Scene
 from app.schemas.audio_schema import VoiceoverCreate
-from app.providers.mock_provider import MockAudioProvider
+from app.schemas.provider_schema import ProviderRunLogCreate
+from app.services import provider_registry, provider_run_service
 
-def generate_mock_voiceover(project: VideoProject, script: Script, scenes: List[Scene]) -> VoiceoverCreate:
+def generate_mock_voiceover(db: Session, project: VideoProject, script: Script, scenes: List[Scene]) -> VoiceoverCreate:
     """
-    Deterministically generates a mock voiceover using MockAudioProvider.
+    Deterministically generates a mock voiceover using registered audio provider.
     Uses concatenated scene narration.
     """
     # Concatenate scene narration
@@ -15,8 +17,19 @@ def generate_mock_voiceover(project: VideoProject, script: Script, scenes: List[
     if not full_narration:
         full_narration = script.script_body
         
-    provider = MockAudioProvider()
+    provider = provider_registry.get_provider("mock", "audio")
     job = provider.generate_voiceover(full_narration, "mock-narrator", project.language)
+    
+    provider_run_service.create_run_log(db, ProviderRunLogCreate(
+        project_id=project.id,
+        provider_name="mock",
+        model_name="mock-audio",
+        modality="audio",
+        operation="voiceover_generation",
+        provider_job_id=job.job_id,
+        request_json={"narration": full_narration, "voice": "mock-narrator", "language": project.language},
+        response_json={"job_id": job.job_id}
+    ))
     
     file_url = f"/storage/projects/{project.id}/audio/voiceover_mock_{job.job_id}.wav"
     

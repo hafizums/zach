@@ -1,11 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import health, projects, scripts, scenes, prompts, assets, audio, subtitles, renders
+from app.api import health, projects, scripts, scenes, prompts, assets, audio, subtitles, renders, providers
 from app.core.storage import init_storage
-from app.core.database import Base, engine
+from app.core.database import Base, engine, SessionLocal
+from app.services import model_catalog_service
 
 # Initialize database
 Base.metadata.create_all(bind=engine)
+
+# Seed default models
+db = SessionLocal()
+try:
+    model_catalog_service.seed_default_mock_models(db)
+finally:
+    db.close()
 
 # Initialize storage
 init_storage()
@@ -30,3 +38,4 @@ app.include_router(assets.router, prefix="/api", tags=["assets"])
 app.include_router(audio.router, prefix="/api", tags=["audio"])
 app.include_router(subtitles.router, prefix="/api", tags=["subtitles"])
 app.include_router(renders.router, prefix="/api", tags=["renders"])
+app.include_router(providers.router, prefix="/api", tags=["providers"])

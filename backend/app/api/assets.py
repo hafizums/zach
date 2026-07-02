@@ -39,7 +39,7 @@ def generate_project_images(project_id: int, db: Session = Depends(get_db)):
             asset_service.deactivate_scene_images(db, scene.id)
             # Create a model instance for the prompt to pass to service
             prompt_model = db.query(ImagePrompt).filter(ImagePrompt.id == pair.image_prompt.id).first()
-            img_in = asset_generation_service.generate_mock_image(project, approved_script, scene, prompt_model)
+            img_in = asset_generation_service.generate_mock_image(db, project, approved_script, scene, prompt_model)
             asset_service.create_generated_image(db, img_in)
             
     # Optionally update state if it was only VIDEO_PROMPTS_READY
@@ -79,7 +79,7 @@ def generate_project_clips(project_id: int, db: Session = Depends(get_db)):
         if pair and pair.video_prompt:
             asset_service.deactivate_scene_clips(db, scene.id)
             prompt_model = db.query(VideoPrompt).filter(VideoPrompt.id == pair.video_prompt.id).first()
-            clip_in = asset_generation_service.generate_mock_clip(project, approved_script, scene, prompt_model, img)
+            clip_in = asset_generation_service.generate_mock_clip(db, project, approved_script, scene, prompt_model, img)
             asset_service.create_generated_clip(db, clip_in)
             
     return asset_service.list_project_assets(db, project_id)
@@ -101,7 +101,7 @@ def retry_scene_image(scene_id: int, db: Session = Depends(get_db)):
         
     asset_service.deactivate_scene_images(db, scene.id)
     prompt_model = db.query(ImagePrompt).filter(ImagePrompt.id == pair.image_prompt.id).first()
-    img_in = asset_generation_service.generate_mock_image(project, script, scene, prompt_model)
+    img_in = asset_generation_service.generate_mock_image(db, project, script, scene, prompt_model)
     asset_service.create_generated_image(db, img_in)
     
     return asset_service.list_scene_assets(db, scene.id)
@@ -127,7 +127,7 @@ def retry_scene_clip(scene_id: int, db: Session = Depends(get_db)):
         
     asset_service.deactivate_scene_clips(db, scene.id)
     prompt_model = db.query(VideoPrompt).filter(VideoPrompt.id == pair.video_prompt.id).first()
-    clip_in = asset_generation_service.generate_mock_clip(project, script, scene, prompt_model, img)
+    clip_in = asset_generation_service.generate_mock_clip(db, project, script, scene, prompt_model, img)
     asset_service.create_generated_clip(db, clip_in)
     
     return asset_service.list_scene_assets(db, scene.id)

@@ -1,14 +1,18 @@
 import json
 import time
 from typing import List
+from sqlalchemy.orm import Session
 from app.models.video_project import VideoProject
 from app.models.audio import Voiceover
 from app.models.subtitle import SubtitleSegment
 from app.models.generated_asset import GeneratedClip
 from app.models.scene import Scene
 from app.schemas.render_schema import FinalRenderCreate
+from app.schemas.provider_schema import ProviderRunLogCreate
+from app.services import provider_registry, provider_run_service
 
 def generate_mock_render(
+    db: Session,
     project: VideoProject,
     voiceover: Voiceover,
     subtitles: List[SubtitleSegment],
@@ -64,6 +68,16 @@ def generate_mock_render(
         "voiceover": voiceover_manifest,
         "subtitles": subtitle_manifests
     }
+    
+    provider_run_service.create_run_log(db, ProviderRunLogCreate(
+        project_id=project.id,
+        provider_name="mock",
+        model_name="mock-render",
+        modality="render",
+        operation="final_render",
+        request_json={"manifest": manifest_dict},
+        response_json={"output_url": output_url}
+    ))
     
     return FinalRenderCreate(
         project_id=project.id,

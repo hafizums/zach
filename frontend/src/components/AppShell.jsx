@@ -8,6 +8,11 @@ const AppShell = ({ children }) => {
         <Link to="/" className="text-xl font-bold text-gray-900 hover:text-blue-600 transition">
           AI Explainer Shorts Generator
         </Link>
+        <nav className="flex space-x-4">
+          <Link to="/providers" className="text-gray-600 hover:text-blue-600 font-medium">
+            Provider Settings
+          </Link>
+        </nav>
       </header>
       <main className="flex-1 p-6">
         {children}

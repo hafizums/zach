@@ -46,6 +46,7 @@ def generate_render(project_id: int, db: Session = Depends(get_db)):
         clips_by_scene[scene.id] = clip
 
     render_in = render_generation_service.generate_mock_render(
+        db=db,
         project=project,
         voiceover=voiceover,
         subtitles=subtitles,
