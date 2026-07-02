@@ -90,6 +90,8 @@ def generate_mock_clip(db: Session, project: VideoProject, script: Script, scene
         scene_id=scene.id,
         video_prompt_id=prompt.id,
         source_image_id=source_image.id,
+        provider_name="mock",
+        model_name="mock-video",
         provider_job_id=job.job_id,
         file_url=file_url,
         duration_seconds=prompt.duration_seconds,
@@ -422,6 +424,358 @@ def _generate_wavespeed_image(
         thumbnail_url=result.get("thumbnail_url", file_url),
         width=result.get("width", 1080),
         height=result.get("height", 1920),
+        status="COMPLETED",
+        is_active=True,
+    )
+
+
+# ===== Video generation =====
+
+def _is_paid_video_provider(db: Session, provider_name: str, model_name: str) -> bool:
+    from app.services import model_catalog_service
+    model = model_catalog_service.get_model(db, provider_name, model_name, "video")
+    if not model:
+        return False
+    return model.cost_hint == "paid" or model.is_mock is False
+
+
+def estimate_clip_generation(
+    db: Session,
+    project: VideoProject,
+    provider_name: str,
+    model_name: str,
+) -> dict:
+    from app.services import script_service, scene_service, prompt_service
+
+    preflight = provider_preflight_service.preflight_provider_model(
+        db, provider_name, model_name, "video"
+    )
+    if not preflight.ok:
+        return {
+            "ok": False,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "modality": "video",
+            "scene_count": 0,
+            "approved_video_prompt_count": 0,
+            "active_image_count": 0,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": preflight.message,
+        }
+
+    scripts = script_service.list_project_scripts(db, project.id)
+    approved_script = next((s for s in scripts if s.status == "APPROVED"), None)
+    if not approved_script:
+        return {
+            "ok": False,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "modality": "video",
+            "scene_count": 0,
+            "approved_video_prompt_count": 0,
+            "active_image_count": 0,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "No approved script found.",
+        }
+
+    scenes = scene_service.list_script_scenes(db, approved_script.id)
+    approved_video_count = 0
+    active_image_count = 0
+    for scene in scenes:
+        pair = prompt_service.list_scene_prompt_pair(db, scene.id)
+        if pair and pair.video_prompt and pair.video_prompt.status == "APPROVED":
+            approved_video_count += 1
+        from app.services.asset_service import get_active_image_for_scene
+        if get_active_image_for_scene(db, scene.id):
+            active_image_count += 1
+
+    if approved_video_count < len(scenes):
+        return {
+            "ok": False,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "modality": "video",
+            "scene_count": len(scenes),
+            "approved_video_prompt_count": approved_video_count,
+            "active_image_count": active_image_count,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "All scenes must have APPROVED video prompts before clip generation.",
+        }
+
+    if active_image_count < len(scenes):
+        return {
+            "ok": False,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "modality": "video",
+            "scene_count": len(scenes),
+            "approved_video_prompt_count": approved_video_count,
+            "active_image_count": active_image_count,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "All scenes must have active images before clip generation.",
+        }
+
+    is_paid = _is_paid_video_provider(db, provider_name, model_name)
+    cost_hint = "paid" if is_paid else "mock-free"
+    jobs = min(approved_video_count, active_image_count)
+
+    return {
+        "ok": True,
+        "provider_name": provider_name,
+        "model_name": model_name,
+        "modality": "video",
+        "scene_count": len(scenes),
+        "approved_video_prompt_count": approved_video_count,
+        "active_image_count": active_image_count,
+        "estimated_jobs": jobs,
+        "cost_hint": cost_hint,
+        "requires_confirmation": is_paid,
+        "message": f"Ready to generate {jobs} video clips with {model_name}.",
+    }
+
+
+def estimate_scene_clip_retry(
+    db: Session,
+    scene_id: int,
+    provider_name: str,
+    model_name: str,
+) -> dict:
+    from app.services import scene_service as svc, prompt_service as ps
+    from app.services.asset_service import get_active_image_for_scene
+
+    preflight = provider_preflight_service.preflight_provider_model(
+        db, provider_name, model_name, "video"
+    )
+    if not preflight.ok:
+        return {
+            "ok": False,
+            "scene_id": scene_id,
+            "scene_number": 0,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": preflight.message,
+        }
+
+    scene = svc.get_scene(db, scene_id)
+    if not scene:
+        return {
+            "ok": False,
+            "scene_id": scene_id,
+            "scene_number": 0,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "Scene not found.",
+        }
+
+    pair = ps.list_scene_prompt_pair(db, scene.id)
+    if not pair or not pair.video_prompt:
+        return {
+            "ok": False,
+            "scene_id": scene.id,
+            "scene_number": scene.scene_number,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "This scene has no video prompt.",
+        }
+
+    if pair.video_prompt.status != "APPROVED":
+        return {
+            "ok": False,
+            "scene_id": scene.id,
+            "scene_number": scene.scene_number,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "Video prompt must be APPROVED before retrying.",
+        }
+
+    if not get_active_image_for_scene(db, scene.id):
+        return {
+            "ok": False,
+            "scene_id": scene.id,
+            "scene_number": scene.scene_number,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "This scene has no active image for clip generation.",
+        }
+
+    is_paid = _is_paid_video_provider(db, provider_name, model_name)
+    cost_hint = "paid" if is_paid else "mock-free"
+
+    return {
+        "ok": True,
+        "scene_id": scene.id,
+        "scene_number": scene.scene_number,
+        "estimated_jobs": 1,
+        "cost_hint": cost_hint,
+        "requires_confirmation": is_paid,
+        "message": f"Ready to retry clip for scene {scene.scene_number} with {model_name}.",
+    }
+
+
+def generate_clip(
+    db: Session,
+    project: VideoProject,
+    script: Script,
+    scene: Scene,
+    prompt: VideoPrompt,
+    source_image: GeneratedImage,
+    provider_name: str = "mock",
+    model_name: str = "mock-video",
+    operation: str = "clip_generation",
+) -> GeneratedClipCreate:
+    provider_preflight_service.require_provider_model(db, provider_name, model_name, "video")
+
+    if provider_name == "mock":
+        return generate_mock_clip(db, project, script, scene, prompt, source_image)
+
+    if provider_name == "wavespeed":
+        return _generate_wavespeed_clip(db, project, script, scene, prompt, source_image, model_name, operation)
+
+    raise HTTPException(status_code=400, detail=f"Unsupported video provider: {provider_name}")
+
+
+def _generate_wavespeed_clip(
+    db: Session,
+    project: VideoProject,
+    script: Script,
+    scene: Scene,
+    prompt: VideoPrompt,
+    source_image: GeneratedImage,
+    model_name: str,
+    operation: str = "clip_generation",
+) -> GeneratedClipCreate:
+    from app.services import model_catalog_service
+
+    provider = provider_registry.get_provider("wavespeed", "video")
+    if not provider:
+        raise HTTPException(status_code=400, detail="WaveSpeed video provider adapter not found")
+
+    model = model_catalog_service.get_model(db, "wavespeed", model_name, "video")
+    default_params = {}
+    if model and model.default_params_json:
+        try:
+            default_params = json.loads(model.default_params_json)
+        except json.JSONDecodeError:
+            pass
+
+    try:
+        job = provider.generate_video(
+            image_url=source_image.file_url,
+            prompt=prompt.prompt_text,
+            duration=prompt.duration_seconds,
+            aspect_ratio="9:16",
+            model_name=model_name,
+            negative_prompt=prompt.negative_prompt,
+            default_params=default_params,
+        )
+    except HTTPException as e:
+        provider_run_service.create_run_log(db, ProviderRunLogCreate(
+            project_id=project.id,
+            scene_id=scene.id,
+            provider_name="wavespeed",
+            model_name=model_name,
+            modality="video",
+            operation=operation,
+            provider_job_id=None,
+            request_json={"prompt_text": prompt.prompt_text, "duration": prompt.duration_seconds, "negative_prompt": prompt.negative_prompt},
+            response_json=None,
+            status="FAILED",
+            error_message=str(e.detail),
+        ))
+        raise
+    except Exception as e:
+        error_msg = f"WaveSpeed video generation failed: {str(e)}"
+        provider_run_service.create_run_log(db, ProviderRunLogCreate(
+            project_id=project.id,
+            scene_id=scene.id,
+            provider_name="wavespeed",
+            model_name=model_name,
+            modality="video",
+            operation=operation,
+            provider_job_id=None,
+            request_json={"prompt_text": prompt.prompt_text, "duration": prompt.duration_seconds, "negative_prompt": prompt.negative_prompt},
+            response_json=None,
+            status="FAILED",
+            error_message=error_msg,
+        ))
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    result = job.result
+    if not isinstance(result, dict):
+        provider_run_service.create_run_log(db, ProviderRunLogCreate(
+            project_id=project.id,
+            scene_id=scene.id,
+            provider_name="wavespeed",
+            model_name=model_name,
+            modality="video",
+            operation=operation,
+            provider_job_id=job.job_id,
+            request_json={"prompt_text": prompt.prompt_text, "duration": prompt.duration_seconds},
+            response_json={"raw_result": str(result)},
+            status="FAILED",
+            error_message="WaveSpeed returned malformed response",
+        ))
+        raise HTTPException(status_code=400, detail="WaveSpeed returned malformed response")
+
+    file_url = result.get("file_url")
+    if not file_url:
+        provider_run_service.create_run_log(db, ProviderRunLogCreate(
+            project_id=project.id,
+            scene_id=scene.id,
+            provider_name="wavespeed",
+            model_name=model_name,
+            modality="video",
+            operation=operation,
+            provider_job_id=job.job_id,
+            request_json={"prompt_text": prompt.prompt_text, "duration": prompt.duration_seconds},
+            response_json=result,
+            status="FAILED",
+            error_message="WaveSpeed response missing file_url",
+        ))
+        raise HTTPException(status_code=400, detail="WaveSpeed response missing file_url")
+
+    provider_job_id = result.get("provider_job_id", job.job_id)
+
+    provider_run_service.create_run_log(db, ProviderRunLogCreate(
+        project_id=project.id,
+        scene_id=scene.id,
+        provider_name="wavespeed",
+        model_name=model_name,
+        modality="video",
+        operation=operation,
+        provider_job_id=provider_job_id,
+        request_json={"prompt_text": prompt.prompt_text, "duration": prompt.duration_seconds, "negative_prompt": prompt.negative_prompt},
+        response_json=result,
+        status="COMPLETED",
+    ))
+
+    return GeneratedClipCreate(
+        project_id=project.id,
+        script_id=script.id,
+        scene_id=scene.id,
+        video_prompt_id=prompt.id,
+        source_image_id=source_image.id,
+        provider_name="wavespeed",
+        model_name=model_name,
+        provider_job_id=provider_job_id,
+        file_url=file_url,
+        duration_seconds=result.get("duration_seconds", prompt.duration_seconds),
+        width=result.get("width", 1080),
+        height=result.get("height", 1920),
+        fps=result.get("fps", 24),
         status="COMPLETED",
         is_active=True,
     )

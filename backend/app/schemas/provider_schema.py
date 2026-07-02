@@ -93,3 +93,28 @@ class ImageGenerationEstimateResponse(BaseModel):
     cost_hint: str = "mock-free"
     requires_confirmation: bool = False
     message: str = ""
+
+
+class VideoGenerationRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-video"
+    confirmed: bool = False
+
+
+class VideoGenerationEstimateRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-video"
+
+
+class VideoGenerationEstimateResponse(BaseModel):
+    ok: bool
+    provider_name: str
+    model_name: str
+    modality: str = "video"
+    scene_count: int = 0
+    approved_video_prompt_count: int = 0
+    active_image_count: int = 0
+    estimated_jobs: int = 0
+    cost_hint: str = "mock-free"
+    requires_confirmation: bool = False
+    message: str = ""

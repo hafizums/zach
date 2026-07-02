@@ -4,15 +4,25 @@ from typing import List, Optional
 
 from app.core.database import get_db
 from app.schemas.asset_schema import SceneAssetPairRead, GeneratedImageRead, GeneratedClipRead
-from app.schemas.provider_schema import ImageGenerationRequest, ImageGenerationEstimateRequest
+from app.schemas.provider_schema import ImageGenerationRequest, ImageGenerationEstimateRequest, VideoGenerationRequest, VideoGenerationEstimateRequest
 from app.services import asset_service, asset_generation_service, project_service, script_service, scene_service, prompt_service, model_catalog_service
 from app.models.prompt import ImagePrompt, VideoPrompt
+from app.models.generated_asset import GeneratedClip
 
 router = APIRouter()
 
 
 def _require_confirmation_if_paid(db: Session, provider_name: str, model_name: str, confirmed: bool) -> None:
     model = model_catalog_service.get_model(db, provider_name, model_name, "image")
+    if not model or not model.is_enabled:
+        return
+    is_paid = model.cost_hint == "paid" or model.is_mock is False
+    if is_paid and not confirmed:
+        raise HTTPException(status_code=400, detail="Paid provider generation requires explicit confirmation.")
+
+
+def _require_confirmation_if_paid_video(db: Session, provider_name: str, model_name: str, confirmed: bool) -> None:
+    model = model_catalog_service.get_model(db, provider_name, model_name, "video")
     if not model or not model.is_enabled:
         return
     is_paid = model.cost_hint == "paid" or model.is_mock is False
@@ -109,38 +119,94 @@ def generate_project_images(
 
     return asset_service.list_project_assets(db, project_id)
 
-@router.post("/projects/{project_id}/assets/clips/generate", response_model=List[SceneAssetPairRead])
-def generate_project_clips(project_id: int, db: Session = Depends(get_db)):
+@router.post("/projects/{project_id}/assets/clips/estimate")
+def estimate_project_clips(
+    project_id: int,
+    request: Optional[VideoGenerationEstimateRequest] = None,
+    db: Session = Depends(get_db),
+):
+    if request is None:
+        request = VideoGenerationEstimateRequest()
+
     project = project_service.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-        
+
+    return asset_generation_service.estimate_clip_generation(
+        db, project, request.provider_name, request.model_name
+    )
+
+
+@router.post("/scenes/{scene_id}/assets/clip/estimate")
+def estimate_scene_clip_retry(
+    scene_id: int,
+    request: Optional[VideoGenerationEstimateRequest] = None,
+    db: Session = Depends(get_db),
+):
+    if request is None:
+        request = VideoGenerationEstimateRequest()
+
+    return asset_generation_service.estimate_scene_clip_retry(
+        db, scene_id, request.provider_name, request.model_name
+    )
+
+
+@router.post("/projects/{project_id}/assets/clips/generate", response_model=List[SceneAssetPairRead])
+def generate_project_clips(
+    project_id: int,
+    request: Optional[VideoGenerationRequest] = None,
+    db: Session = Depends(get_db),
+):
+    if request is None:
+        request = VideoGenerationRequest(provider_name="mock", model_name="mock-video")
+
+    _require_confirmation_if_paid_video(db, request.provider_name, request.model_name, request.confirmed)
+
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
     scripts = script_service.list_project_scripts(db, project_id)
     approved_script = next((s for s in scripts if s.status == "APPROVED"), None)
     if not approved_script:
         raise HTTPException(status_code=400, detail="No approved script found for this project.")
-    
+
     scenes = scene_service.list_script_scenes(db, approved_script.id)
-    
+
     # Validation pass
     for scene in scenes:
         pair = prompt_service.list_scene_prompt_pair(db, scene.id)
         if not pair or not pair.video_prompt or pair.video_prompt.status != "APPROVED":
             raise HTTPException(status_code=400, detail=f"Video prompt for scene {scene.scene_number} is not APPROVED.")
-            
         img = asset_service.get_active_image_for_scene(db, scene.id)
         if not img:
             raise HTTPException(status_code=400, detail=f"Cannot generate clip for scene {scene.scene_number} because it has no active image.")
-            
+
+    # Phase 1: Generate and validate all clip results
+    pending: list[tuple] = []
     for scene in scenes:
         img = asset_service.get_active_image_for_scene(db, scene.id)
         pair = prompt_service.list_scene_prompt_pair(db, scene.id)
-        if pair and pair.video_prompt:
-            asset_service.deactivate_scene_clips(db, scene.id)
-            prompt_model = db.query(VideoPrompt).filter(VideoPrompt.id == pair.video_prompt.id).first()
-            clip_in = asset_generation_service.generate_mock_clip(db, project, approved_script, scene, prompt_model, img)
-            asset_service.create_generated_clip(db, clip_in)
-            
+        prompt_model = db.query(VideoPrompt).filter(VideoPrompt.id == pair.video_prompt.id).first()
+        clip_in = asset_generation_service.generate_clip(
+            db, project, approved_script, scene, prompt_model, img,
+            provider_name=request.provider_name,
+            model_name=request.model_name,
+        )
+        pending.append((scene, clip_in))
+
+    # Phase 2: All results valid — write every record
+    for scene, clip_in in pending:
+        asset_service.create_generated_clip(db, clip_in)
+        # Keep only the latest clip active
+        clips = db.query(GeneratedClip).filter(
+            GeneratedClip.scene_id == scene.id, GeneratedClip.is_active == True
+        ).order_by(GeneratedClip.id.desc()).all()
+        for c in clips[1:]:
+            c.is_active = False
+            db.add(c)
+        db.commit()
+
     return asset_service.list_project_assets(db, project_id)
 
 @router.post("/scenes/{scene_id}/assets/image/retry", response_model=SceneAssetPairRead)
@@ -180,29 +246,50 @@ def retry_scene_image(
     return asset_service.list_scene_assets(db, scene.id)
 
 @router.post("/scenes/{scene_id}/assets/clip/retry", response_model=SceneAssetPairRead)
-def retry_scene_clip(scene_id: int, db: Session = Depends(get_db)):
+def retry_scene_clip(
+    scene_id: int,
+    request: Optional[VideoGenerationRequest] = None,
+    db: Session = Depends(get_db),
+):
+    if request is None:
+        request = VideoGenerationRequest(provider_name="mock", model_name="mock-video")
+
+    _require_confirmation_if_paid_video(db, request.provider_name, request.model_name, request.confirmed)
+
     scene = scene_service.get_scene(db, scene_id)
     if not scene:
         raise HTTPException(status_code=404, detail="Scene not found")
-        
+
     project = project_service.get_project(db, scene.project_id)
     script = script_service.get_script(db, scene.script_id)
-    
+
     pair = prompt_service.list_scene_prompt_pair(db, scene.id)
     if not pair or not pair.video_prompt:
         raise HTTPException(status_code=400, detail="Missing video prompt")
     if pair.video_prompt.status != "APPROVED":
         raise HTTPException(status_code=400, detail="Video prompt must be APPROVED to generate assets.")
-        
+
     img = asset_service.get_active_image_for_scene(db, scene.id)
     if not img:
         raise HTTPException(status_code=400, detail="Cannot generate clip without active image")
-        
-    asset_service.deactivate_scene_clips(db, scene.id)
+
     prompt_model = db.query(VideoPrompt).filter(VideoPrompt.id == pair.video_prompt.id).first()
-    clip_in = asset_generation_service.generate_mock_clip(db, project, script, scene, prompt_model, img)
+    clip_in = asset_generation_service.generate_clip(
+        db, project, script, scene, prompt_model, img,
+        provider_name=request.provider_name,
+        model_name=request.model_name,
+        operation="clip_retry",
+    )
     asset_service.create_generated_clip(db, clip_in)
-    
+    # Keep only the latest clip active
+    clips = db.query(GeneratedClip).filter(
+        GeneratedClip.scene_id == scene.id, GeneratedClip.is_active == True
+    ).order_by(GeneratedClip.id.desc()).all()
+    for c in clips[1:]:
+        c.is_active = False
+        db.add(c)
+    db.commit()
+
     return asset_service.list_scene_assets(db, scene.id)
 
 @router.get("/projects/{project_id}/assets", response_model=List[SceneAssetPairRead])

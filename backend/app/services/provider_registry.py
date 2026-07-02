@@ -7,7 +7,7 @@ from app.providers.mock_provider import (
     MockTranscriptionProvider,
 )
 from app.providers.openai_provider import OpenAILLMProvider
-from app.providers.wavespeed_provider import WavespeedImageProvider
+from app.providers.wavespeed_provider import WavespeedImageProvider, WavespeedVideoProvider
 
 # A registry connecting provider_names and modalities to actual class instances or constructors
 # In a real app, this might dynamically load plugins or use a dependency injection framework.
@@ -45,6 +45,7 @@ registry.register("mock", "transcription", MockTranscriptionProvider())
 
 registry.register("openai", "llm", OpenAILLMProvider())
 registry.register("wavespeed", "image", WavespeedImageProvider())
+registry.register("wavespeed", "video", WavespeedVideoProvider())
 
 # Note: The render provider doesn't have a dedicated mock class yet, 
 # it's just deterministic logic in render_generation_service, but we can register a dummy for registry completeness

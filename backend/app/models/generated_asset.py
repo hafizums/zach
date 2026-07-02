@@ -41,6 +41,8 @@ class GeneratedClip(Base):
     video_prompt_id = Column(Integer, ForeignKey("video_prompts.id"), nullable=False)
     source_image_id = Column(Integer, ForeignKey("generated_images.id"), nullable=False)
     
+    provider_name = Column(String, nullable=True)
+    model_name = Column(String, nullable=True)
     provider_job_id = Column(String, nullable=True)
     file_url = Column(String, nullable=False)
     duration_seconds = Column(Integer, nullable=False)

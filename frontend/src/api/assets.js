@@ -9,8 +9,12 @@ export const generateProjectImages = async (projectId, providerName = "mock", mo
   return response.data;
 };
 
-export const generateProjectClips = async (projectId) => {
-  const response = await apiClient.post(`/api/projects/${projectId}/assets/clips/generate`, {});
+export const generateProjectClips = async (projectId, providerName = "mock", modelName = "mock-video", confirmed = false) => {
+  const response = await apiClient.post(`/api/projects/${projectId}/assets/clips/generate`, {
+    provider_name: providerName,
+    model_name: modelName,
+    confirmed,
+  });
   return response.data;
 };
 
@@ -23,8 +27,12 @@ export const retrySceneImage = async (sceneId, providerName = "mock", modelName 
   return response.data;
 };
 
-export const retrySceneClip = async (sceneId) => {
-  const response = await apiClient.post(`/api/scenes/${sceneId}/assets/clip/retry`, {});
+export const retrySceneClip = async (sceneId, providerName = "mock", modelName = "mock-video", confirmed = false) => {
+  const response = await apiClient.post(`/api/scenes/${sceneId}/assets/clip/retry`, {
+    provider_name: providerName,
+    model_name: modelName,
+    confirmed,
+  });
   return response.data;
 };
 
@@ -53,6 +61,22 @@ export const estimateProjectImages = async (projectId, providerName = "mock", mo
 
 export const estimateSceneImageRetry = async (sceneId, providerName = "mock", modelName = "mock-image") => {
   const response = await apiClient.post(`/api/scenes/${sceneId}/assets/image/estimate`, {
+    provider_name: providerName,
+    model_name: modelName,
+  });
+  return response.data;
+};
+
+export const estimateProjectClips = async (projectId, providerName = "mock", modelName = "mock-video") => {
+  const response = await apiClient.post(`/api/projects/${projectId}/assets/clips/estimate`, {
+    provider_name: providerName,
+    model_name: modelName,
+  });
+  return response.data;
+};
+
+export const estimateSceneClipRetry = async (sceneId, providerName = "mock", modelName = "mock-video") => {
+  const response = await apiClient.post(`/api/scenes/${sceneId}/assets/clip/estimate`, {
     provider_name: providerName,
     model_name: modelName,
   });

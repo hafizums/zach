@@ -10,6 +10,8 @@ import {
   approveAssets,
   estimateProjectImages,
   estimateSceneImageRetry,
+  estimateProjectClips,
+  estimateSceneClipRetry,
 } from "../api/assets";
 import { listEnabledProviderModels } from "../api/providers";
 
@@ -27,6 +29,10 @@ const AssetGeneration = () => {
   const [imageModels, setImageModels] = useState([]);
   const [selectedImageProvider, setSelectedImageProvider] = useState("mock");
   const [selectedImageModel, setSelectedImageModel] = useState("mock-image");
+
+  const [videoModels, setVideoModels] = useState([]);
+  const [selectedVideoProvider, setSelectedVideoProvider] = useState("mock");
+  const [selectedVideoModel, setSelectedVideoModel] = useState("mock-video");
 
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState(null);
@@ -50,6 +56,13 @@ const AssetGeneration = () => {
       if (images.length > 0) {
         setSelectedImageProvider(images[0].provider_name);
         setSelectedImageModel(images[0].model_name);
+      }
+
+      const videos = allEnabled.filter(m => m.modality === "video");
+      setVideoModels(videos);
+      if (videos.length > 0) {
+        setSelectedVideoProvider(videos[0].provider_name);
+        setSelectedVideoModel(videos[0].model_name);
       }
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to load asset data");
@@ -98,10 +111,36 @@ const AssetGeneration = () => {
   };
 
   const handleGenerateClips = async () => {
+    setError(null);
+    setRetryErrors({});
+    try {
+      setGenerating(true);
+      const estimate = await estimateProjectClips(projectId, selectedVideoProvider, selectedVideoModel);
+      if (estimate.requires_confirmation) {
+        setConfirmModal({
+          type: "project-clips",
+          estimate,
+          onConfirm: async () => {
+            setConfirmModal(null);
+            await doGenerateClips();
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+        setGenerating(false);
+        return;
+      }
+      await doGenerateClips();
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to estimate clip generation");
+      setGenerating(false);
+    }
+  };
+
+  const doGenerateClips = async () => {
     try {
       setGenerating(true);
       setError(null);
-      const newPairs = await generateProjectClips(projectId);
+      const newPairs = await generateProjectClips(projectId, selectedVideoProvider, selectedVideoModel, true);
       setAssetPairs(newPairs);
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to generate clips");
@@ -155,7 +194,35 @@ const AssetGeneration = () => {
     setRetryErrors(prev => ({ ...prev, [sceneId]: null }));
     try {
       setGenerating(true);
-      const updatedPair = await retrySceneClip(sceneId);
+      const estimate = await estimateSceneClipRetry(sceneId, selectedVideoProvider, selectedVideoModel);
+      if (estimate.requires_confirmation) {
+        setConfirmModal({
+          type: "retry-clip",
+          sceneId,
+          estimate,
+          onConfirm: async () => {
+            setConfirmModal(null);
+            await doRetryClip(sceneId);
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+        setGenerating(false);
+        return;
+      }
+      await doRetryClip(sceneId);
+    } catch (err) {
+      setRetryErrors(prev => ({
+        ...prev,
+        [sceneId]: err.response?.data?.detail || "Failed to estimate clip retry",
+      }));
+      setGenerating(false);
+    }
+  };
+
+  const doRetryClip = async (sceneId) => {
+    try {
+      setGenerating(true);
+      const updatedPair = await retrySceneClip(sceneId, selectedVideoProvider, selectedVideoModel, true);
       setAssetPairs(prev => prev.map(p => p.scene_id === sceneId ? updatedPair : p));
     } catch (err) {
       setRetryErrors(prev => ({
@@ -286,13 +353,31 @@ const AssetGeneration = () => {
                 </button>
               </div>
 
-              <button
-                onClick={handleGenerateClips}
-                disabled={generating || !hasImages || assetsApproved}
-                className="px-4 py-2 bg-purple-100 text-purple-700 font-medium rounded hover:bg-purple-200 disabled:opacity-50"
-              >
-                {hasClips ? "Regenerate Clips" : "Generate Clips"}
-              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={`${selectedVideoProvider}:${selectedVideoModel}`}
+                  onChange={(e) => {
+                    const [provider, model] = e.target.value.split(":");
+                    setSelectedVideoProvider(provider);
+                    setSelectedVideoModel(model);
+                  }}
+                  className="text-sm border border-gray-300 rounded px-2 py-1.5 bg-white"
+                  disabled={generating}
+                >
+                  {videoModels.map(m => (
+                    <option key={`${m.provider_name}:${m.model_name}`} value={`${m.provider_name}:${m.model_name}`}>
+                      {m.display_name} ({m.cost_hint || "free"})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleGenerateClips}
+                  disabled={generating || !hasImages || assetsApproved}
+                  className="px-4 py-2 bg-purple-100 text-purple-700 font-medium rounded hover:bg-purple-200 disabled:opacity-50"
+                >
+                  {hasClips ? "Regenerate Clips" : "Generate Clips"}
+                </button>
+              </div>
 
               <button
                 onClick={handleApproveAll}
@@ -398,6 +483,13 @@ const AssetGeneration = () => {
                             <span className="text-[10px] text-gray-500 font-mono">{pair.clip.file_url.split('/').pop()}</span>
                             <span className="text-[10px] text-gray-400">{pair.clip.duration_seconds}s | {pair.clip.fps}fps</span>
                           </div>
+                          {pair.clip.provider_name && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded">
+                                {pair.clip.provider_name}/{pair.clip.model_name}
+                              </span>
+                            </div>
+                          )}
                           {retryErrors[pair.scene_id] && (
                             <div className="text-[10px] text-red-500 bg-red-50 p-1 rounded">{retryErrors[pair.scene_id]}</div>
                           )}

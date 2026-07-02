@@ -30,6 +30,21 @@ def seed_default_mock_models(db: Session) -> None:
     }
     defaults.append(wavespeed_seed)
 
+    wavespeed_default_video_model = os.getenv("WAVESPEED_DEFAULT_VIDEO_MODEL", "wan-2.1-1.3b")
+    wavespeed_video_seed = {
+        "provider_name": "wavespeed",
+        "model_name": wavespeed_default_video_model,
+        "display_name": "WaveSpeed Video",
+        "modality": "video",
+        "is_enabled": False,
+        "is_mock": False,
+        "supports_aspect_ratio": "9:16,16:9,1:1",
+        "supports_duration_seconds": "3,5,8",
+        "cost_hint": "paid",
+        "default_params_json": json.dumps({"motion_bucket_id": 127, "fps": 24}),
+    }
+    defaults.append(wavespeed_video_seed)
+
     openai_default_model = os.getenv("OPENAI_DEFAULT_LLM_MODEL", "gpt-4o-mini")
     openai_seed = {
         "provider_name": "openai",

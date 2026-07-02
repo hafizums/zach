@@ -49,6 +49,8 @@ class GeneratedClipCreate(GeneratedClipBase):
     scene_id: int
     video_prompt_id: int
     source_image_id: int
+    provider_name: Optional[str] = None
+    model_name: Optional[str] = None
     provider_job_id: Optional[str] = None
 
 class GeneratedClipRead(GeneratedClipBase):
@@ -58,6 +60,8 @@ class GeneratedClipRead(GeneratedClipBase):
     scene_id: int
     video_prompt_id: int
     source_image_id: int
+    provider_name: Optional[str] = None
+    model_name: Optional[str] = None
     provider_job_id: Optional[str] = None
     quality_score: Optional[int] = None
     created_at: datetime
