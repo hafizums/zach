@@ -118,3 +118,29 @@ class VideoGenerationEstimateResponse(BaseModel):
     cost_hint: str = "mock-free"
     requires_confirmation: bool = False
     message: str = ""
+
+
+class VoiceoverGenerationRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-audio"
+    voice_id: Optional[str] = None
+    confirmed: bool = False
+
+
+class VoiceoverGenerationEstimateRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-audio"
+    voice_id: Optional[str] = None
+
+
+class VoiceoverGenerationEstimateResponse(BaseModel):
+    ok: bool
+    provider_name: str
+    model_name: str
+    modality: str = "audio"
+    script_id: Optional[int] = None
+    character_count: int = 0
+    estimated_jobs: int = 0
+    cost_hint: str = "mock-free"
+    requires_confirmation: bool = False
+    message: str = ""

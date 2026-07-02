@@ -3,6 +3,8 @@ from typing import Optional
 from datetime import datetime
 
 class VoiceoverBase(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-audio"
     voice_id: str = "mock-narrator"
     language: str = "en"
     narration_text: str

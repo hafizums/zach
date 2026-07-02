@@ -6,7 +6,7 @@ from app.providers.mock_provider import (
     MockAudioProvider,
     MockTranscriptionProvider,
 )
-from app.providers.openai_provider import OpenAILLMProvider
+from app.providers.openai_provider import OpenAILLMProvider, OpenAITTSProvider
 from app.providers.wavespeed_provider import WavespeedImageProvider, WavespeedVideoProvider
 
 # A registry connecting provider_names and modalities to actual class instances or constructors
@@ -44,6 +44,7 @@ registry.register("mock", "audio", MockAudioProvider())
 registry.register("mock", "transcription", MockTranscriptionProvider())
 
 registry.register("openai", "llm", OpenAILLMProvider())
+registry.register("openai", "audio", OpenAITTSProvider())
 registry.register("wavespeed", "image", WavespeedImageProvider())
 registry.register("wavespeed", "video", WavespeedVideoProvider())
 

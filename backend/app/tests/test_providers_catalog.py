@@ -56,7 +56,7 @@ def test_default_mock_models_seeded():
     response = client.get("/api/providers/models")
     assert response.status_code == 200
     models = response.json()
-    assert len(models) == 9
+    assert len(models) == 10
     assert any(m["model_name"] == "mock-llm" for m in models)
     assert any(m["model_name"] == "mock-image" for m in models)
 

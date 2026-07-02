@@ -57,6 +57,19 @@ def seed_default_mock_models(db: Session) -> None:
         "default_params_json": json.dumps({"temperature": 0.7})
     }
     defaults.append(openai_seed)
+
+    openai_default_tts_model = os.getenv("OPENAI_DEFAULT_TTS_MODEL", "gpt-4o-mini-tts")
+    openai_tts_seed = {
+        "provider_name": "openai",
+        "model_name": openai_default_tts_model,
+        "display_name": "OpenAI TTS",
+        "modality": "audio",
+        "is_enabled": False,
+        "is_mock": False,
+        "cost_hint": "paid",
+        "default_params_json": json.dumps({"voice": "alloy", "format": "mp3"}),
+    }
+    defaults.append(openai_tts_seed)
     
     for default in defaults:
         existing = db.query(ProviderModel).filter(

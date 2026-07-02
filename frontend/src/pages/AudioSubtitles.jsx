@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getProject } from '../api/projects';
-import { generateVoiceover, getActiveVoiceover } from '../api/audio';
+import { estimateVoiceover, generateVoiceover, getActiveVoiceover } from '../api/audio';
 import { generateSubtitles, listProjectSubtitles, updateSubtitleSegment, approveSubtitles } from '../api/subtitles';
+import { listEnabledProviderModels } from '../api/providers';
 
 const AudioSubtitles = () => {
   const { projectId } = useParams();
@@ -11,13 +12,22 @@ const AudioSubtitles = () => {
   const [project, setProject] = useState(null);
   const [voiceover, setVoiceover] = useState(null);
   const [subtitles, setSubtitles] = useState([]);
-  
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [generatingVoiceover, setGeneratingVoiceover] = useState(false);
   const [generatingSubtitles, setGeneratingSubtitles] = useState(false);
   const [savingSubtitles, setSavingSubtitles] = useState({});
   const [approving, setApproving] = useState(false);
+
+  // Provider selection state
+  const [audioModels, setAudioModels] = useState([]);
+  const [selectedProvider, setSelectedProvider] = useState('mock');
+  const [selectedModel, setSelectedModel] = useState('mock-audio');
+  const [selectedVoice, setSelectedVoice] = useState(null);
+
+  // Confirmation modal state
+  const [confirmModal, setConfirmModal] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -28,6 +38,19 @@ const AudioSubtitles = () => {
       setLoading(true);
       const projData = await getProject(projectId);
       setProject(projData);
+
+      // Load enabled audio models for provider dropdown
+      try {
+        const allEnabled = await listEnabledProviderModels();
+        const audioMods = allEnabled.filter(m => m.modality === 'audio');
+        setAudioModels(audioMods);
+        if (audioMods.length > 0) {
+          setSelectedProvider(audioMods[0].provider_name);
+          setSelectedModel(audioMods[0].model_name);
+        }
+      } catch (_) {
+        // Provider models endpoint may not be available; ignore
+      }
 
       try {
         const voData = await getActiveVoiceover(projectId);
@@ -42,7 +65,7 @@ const AudioSubtitles = () => {
         }
       }
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Failed to load data");
+      setError(err.response?.data?.detail || err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -52,17 +75,52 @@ const AudioSubtitles = () => {
     try {
       setGeneratingVoiceover(true);
       setError(null);
-      const voData = await generateVoiceover(projectId);
+
+      // Estimate first
+      const estimate = await estimateVoiceover(projectId, selectedProvider, selectedModel, selectedVoice);
+
+      if (!estimate.ok) {
+        setError(estimate.message || 'Voiceover generation is not available.');
+        setGeneratingVoiceover(false);
+        return;
+      }
+
+      if (estimate.requires_confirmation) {
+        setConfirmModal({
+          estimate,
+          onConfirm: async () => {
+            setConfirmModal(null);
+            await doGenerateVoiceover();
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+        setGeneratingVoiceover(false);
+        return;
+      }
+
+      // Mock/free: generate directly
+      await doGenerateVoiceover();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to estimate voiceover generation');
+      setGeneratingVoiceover(false);
+    }
+  };
+
+  const doGenerateVoiceover = async () => {
+    try {
+      setGeneratingVoiceover(true);
+      setError(null);
+      const voData = await generateVoiceover(projectId, selectedProvider, selectedModel, selectedVoice, true);
       setVoiceover(voData);
-      
-      // Need to reload project state as well
+
+      // Reload project state
       const projData = await getProject(projectId);
       setProject(projData);
-      
-      // clear old subtitles
+
+      // Clear old subtitles
       setSubtitles([]);
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to generate voiceover");
+      setError(err.response?.data?.detail || 'Failed to generate voiceover');
     } finally {
       setGeneratingVoiceover(false);
     }
@@ -75,7 +133,7 @@ const AudioSubtitles = () => {
       const subsData = await generateSubtitles(projectId);
       setSubtitles(subsData);
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to generate subtitles");
+      setError(err.response?.data?.detail || 'Failed to generate subtitles');
     } finally {
       setGeneratingSubtitles(false);
     }
@@ -102,7 +160,7 @@ const AudioSubtitles = () => {
         style: segment.style
       });
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to save subtitle");
+      setError(err.response?.data?.detail || 'Failed to save subtitle');
     } finally {
       setSavingSubtitles({ ...savingSubtitles, [index]: false });
     }
@@ -115,7 +173,7 @@ const AudioSubtitles = () => {
       await approveSubtitles(projectId);
       navigate(`/projects/${projectId}`);
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to approve");
+      setError(err.response?.data?.detail || 'Failed to approve');
     } finally {
       setApproving(false);
     }
@@ -124,7 +182,7 @@ const AudioSubtitles = () => {
   if (loading) return <div className="p-8">Loading Audio & Subtitles...</div>;
   if (!project) return <div className="p-8 text-red-500">Project not found</div>;
 
-  const validPriorStatuses = ["CLIPS_GENERATED", "VOICEOVER_READY", "SUBTITLES_READY", "FINAL_RENDER_READY"];
+  const validPriorStatuses = ['CLIPS_GENERATED', 'VOICEOVER_READY', 'SUBTITLES_READY', 'FINAL_RENDER_READY'];
   const canGenerate = validPriorStatuses.includes(project.status);
 
   return (
@@ -148,6 +206,54 @@ const AudioSubtitles = () => {
         </div>
       )}
 
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4 space-y-4 border border-gray-700">
+            <h3 className="text-lg font-semibold text-white">Confirm Paid Voiceover Generation</h3>
+            <div className="space-y-2 text-sm text-gray-300">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Provider:</span>
+                <span className="font-medium text-white">{confirmModal.estimate.provider_name}/{confirmModal.estimate.model_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Voice:</span>
+                <span className="font-medium text-white">{selectedVoice || 'default'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Characters:</span>
+                <span className="font-medium text-white">{confirmModal.estimate.character_count}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Audio Jobs:</span>
+                <span className="font-medium text-white">{confirmModal.estimate.estimated_jobs}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Cost:</span>
+                <span className="font-medium text-amber-400 uppercase">{confirmModal.estimate.cost_hint}</span>
+              </div>
+            </div>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded p-3 text-sm text-amber-400">
+              This will use paid provider credits. Are you sure you want to continue?
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={confirmModal.onCancel}
+                className="px-4 py-2 text-gray-300 bg-gray-700 rounded hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+              >
+                Confirm &amp; Generate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!canGenerate ? (
         <div className="bg-gray-900 border border-gray-800 p-8 rounded-lg text-center">
             <h2 className="text-xl text-gray-300">Assets are not approved yet.</h2>
@@ -155,11 +261,47 @@ const AudioSubtitles = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
+
             <div className="lg:col-span-1 space-y-6">
                 <div className="bg-gray-900 border border-gray-800 p-6 rounded-lg shadow-lg">
                     <h2 className="text-xl font-bold text-white mb-4">Voiceover</h2>
-                    
+
+                    {/* Provider Selection */}
+                    {audioModels.length > 1 && (
+                      <div className="space-y-3 mb-4">
+                        <div>
+                          <label className="text-xs text-gray-400 block mb-1">Provider / Model</label>
+                          <select
+                            value={`${selectedProvider}:${selectedModel}`}
+                            onChange={(e) => {
+                              const [provider, model] = e.target.value.split(':');
+                              setSelectedProvider(provider);
+                              setSelectedModel(model);
+                            }}
+                            className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white"
+                            disabled={generatingVoiceover}
+                          >
+                            {audioModels.map(m => (
+                              <option key={`${m.provider_name}:${m.model_name}`} value={`${m.provider_name}:${m.model_name}`}>
+                                {m.display_name} ({m.cost_hint || 'free'})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 block mb-1">Voice ID</label>
+                          <input
+                            type="text"
+                            value={selectedVoice || ''}
+                            onChange={(e) => setSelectedVoice(e.target.value || null)}
+                            placeholder="default"
+                            className="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white"
+                            disabled={generatingVoiceover}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {voiceover ? (
                         <div className="space-y-4">
                             <div className="bg-gray-800 p-4 rounded-lg text-sm space-y-2">
@@ -168,19 +310,27 @@ const AudioSubtitles = () => {
                                     <span className="text-white font-medium">{voiceover.status}</span>
                                 </div>
                                 <div className="flex justify-between">
+                                    <span className="text-gray-400">Provider</span>
+                                    <span className="text-white font-medium">{voiceover.provider_name || 'mock'}/{voiceover.model_name || 'mock-audio'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-400">Voice</span>
+                                    <span className="text-white font-medium">{voiceover.voice_id || 'default'}</span>
+                                </div>
+                                <div className="flex justify-between">
                                     <span className="text-gray-400">Duration</span>
                                     <span className="text-white font-medium">{voiceover.duration_seconds}s</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-400">Job ID</span>
-                                    <span className="text-gray-300 text-xs truncate max-w-[150px]">{voiceover.provider_job_id || "None"}</span>
+                                    <span className="text-gray-300 text-xs truncate max-w-[150px]">{voiceover.provider_job_id || 'None'}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-400">File Path</span>
                                     <span className="text-gray-300 text-xs truncate max-w-[150px]" title={voiceover.file_url}>{voiceover.file_url}</span>
                                 </div>
                             </div>
-                            
+
                             <button
                                 onClick={handleGenerateVoiceover}
                                 disabled={generatingVoiceover}
@@ -215,7 +365,7 @@ const AudioSubtitles = () => {
                             </button>
                         )}
                     </div>
-                    
+
                     {!voiceover ? (
                         <div className="text-center py-8 text-gray-500">
                             Generate voiceover first to create subtitles.
@@ -235,8 +385,8 @@ const AudioSubtitles = () => {
                                     <div className="md:col-span-2 space-y-2">
                                         <div>
                                             <label className="text-xs text-gray-500 block mb-1">Start (s)</label>
-                                            <input 
-                                                type="number" 
+                                            <input
+                                                type="number"
                                                 step="0.1"
                                                 value={sub.start_time}
                                                 onChange={(e) => handleSubtitleChange(index, 'start_time', e.target.value)}
@@ -245,8 +395,8 @@ const AudioSubtitles = () => {
                                         </div>
                                         <div>
                                             <label className="text-xs text-gray-500 block mb-1">End (s)</label>
-                                            <input 
-                                                type="number" 
+                                            <input
+                                                type="number"
                                                 step="0.1"
                                                 value={sub.end_time}
                                                 onChange={(e) => handleSubtitleChange(index, 'end_time', e.target.value)}
@@ -291,7 +441,7 @@ const AudioSubtitles = () => {
                         </div>
                     )}
                 </div>
-                
+
                 {voiceover && subtitles.length > 0 && (
                     <div className="flex justify-end pt-4">
                         <button

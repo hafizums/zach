@@ -11,6 +11,8 @@ class Voiceover(Base):
     script_id = Column(Integer, ForeignKey("scripts.id"), nullable=False)
     
     provider_job_id = Column(String, nullable=True)
+    provider_name = Column(String, default="mock")
+    model_name = Column(String, default="mock-audio")
     voice_id = Column(String, default="mock-narrator")
     language = Column(String, default="en")
     narration_text = Column(Text, nullable=False)
