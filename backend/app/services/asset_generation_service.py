@@ -173,12 +173,41 @@ def estimate_image_generation(
             "message": "No approved script found.",
         }
 
+    valid_statuses = ["VIDEO_PROMPTS_READY", "IMAGES_GENERATED", "CLIPS_GENERATED", "VOICEOVER_READY", "SUBTITLES_READY", "FINAL_RENDER_READY"]
+    if project.status not in valid_statuses:
+        return {
+            "ok": False,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "modality": "image",
+            "scene_count": 0,
+            "approved_prompt_count": 0,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "Cannot generate images before prompts are approved.",
+        }
+
     scenes = scene_service.list_script_scenes(db, approved_script.id)
     approved_count = 0
     for scene in scenes:
         pair = prompt_service.list_scene_prompt_pair(db, scene.id)
         if pair and pair.image_prompt and pair.image_prompt.status == "APPROVED":
             approved_count += 1
+
+    if approved_count < len(scenes):
+        return {
+            "ok": False,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "modality": "image",
+            "scene_count": len(scenes),
+            "approved_prompt_count": approved_count,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "All scenes must have APPROVED image prompts before image generation.",
+        }
 
     is_paid = _is_paid_provider(db, provider_name, model_name)
     cost_hint = "paid" if is_paid else "mock-free"
@@ -230,6 +259,29 @@ def estimate_scene_image_retry(
             "cost_hint": "",
             "requires_confirmation": False,
             "message": "Scene not found.",
+        }
+
+    pair = ps.list_scene_prompt_pair(db, scene.id)
+    if not pair or not pair.image_prompt:
+        return {
+            "ok": False,
+            "scene_id": scene.id,
+            "scene_number": scene.scene_number,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "This scene has no image prompt.",
+        }
+
+    if pair.image_prompt.status != "APPROVED":
+        return {
+            "ok": False,
+            "scene_id": scene.id,
+            "scene_number": scene.scene_number,
+            "estimated_jobs": 0,
+            "cost_hint": "",
+            "requires_confirmation": False,
+            "message": "Image prompt must be APPROVED before retrying.",
         }
 
     is_paid = _is_paid_provider(db, provider_name, model_name)

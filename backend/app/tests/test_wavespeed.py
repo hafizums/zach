@@ -815,6 +815,108 @@ def test_run_logs_have_operation_field():
     assert "image_retry" in operations
 
 
+# ===== Gate review tests =====
+
+# --- Test 31: project estimate returns ok=false when project status is before VIDEO_PROMPTS_READY ---
+def test_estimate_project_before_prompts_approved():
+    proj_res = client.post("/api/projects/", json={
+        "title": "est-before-prompts",
+        "topic": "Testing",
+        "duration_target": 40,
+    })
+    project_id = proj_res.json()["id"]
+    script_res = client.post(f"/api/projects/{project_id}/scripts/generate", json={})
+    client.post(f"/api/scripts/{script_res.json()['id']}/approve")
+    client.post(f"/api/projects/{project_id}/scenes/generate")
+    client.post(f"/api/projects/{project_id}/scenes/approve")
+    # prompts generated but NOT approved — status is SCENE_PLAN_READY
+
+    res = client.post(
+        f"/api/projects/{project_id}/assets/images/estimate",
+        json={"provider_name": "mock", "model_name": "mock-image"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is False
+    assert "before prompts are approved" in data["message"].lower()
+
+
+# --- Test 32: project estimate returns ok=false when scenes lack approved image prompts ---
+def test_estimate_project_missing_approved_prompts():
+    project_id = _setup_approved_prompts_setup("est-missing-approved")
+    # All prompts are APPROVED from setup.
+    # Directly set one image prompt status to DRAFT via DB.
+    db = TestingSessionLocal()
+    from app.models.prompt import ImagePrompt
+    img_prompt = db.query(ImagePrompt).filter(ImagePrompt.project_id == project_id).first()
+    img_prompt.status = "DRAFT"
+    db.add(img_prompt)
+    db.commit()
+    db.close()
+
+    res = client.post(
+        f"/api/projects/{project_id}/assets/images/estimate",
+        json={"provider_name": "mock", "model_name": "mock-image"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is False
+    assert data["scene_count"] == 8
+    assert data["approved_prompt_count"] == 7
+    assert data["estimated_jobs"] == 0
+    assert "approved" in data["message"].lower()
+
+
+# --- Test 33: scene retry estimate returns ok=false when image prompt is missing ---
+def test_estimate_scene_retry_missing_prompt():
+    proj_res = client.post("/api/projects/", json={
+        "title": "est-scene-no-prompt",
+        "topic": "Testing",
+        "duration_target": 40,
+    })
+    project_id = proj_res.json()["id"]
+    script_res = client.post(f"/api/projects/{project_id}/scripts/generate", json={})
+    client.post(f"/api/scripts/{script_res.json()['id']}/approve")
+    client.post(f"/api/projects/{project_id}/scenes/generate")
+    client.post(f"/api/projects/{project_id}/scenes/approve")
+    # prompts NOT generated — scenes have no image prompts yet
+    scenes = client.get(f"/api/projects/{project_id}/scenes").json()
+    scene_id = scenes[0]["id"]
+
+    res = client.post(
+        f"/api/scenes/{scene_id}/assets/image/estimate",
+        json={},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is False
+    assert "no image prompt" in data["message"].lower()
+
+
+# --- Test 34: scene retry estimate returns ok=false when image prompt is not APPROVED ---
+def test_estimate_scene_retry_prompt_not_approved():
+    project_id = _setup_approved_prompts_setup("est-scene-not-approved")
+    prompts_list = client.get(f"/api/projects/{project_id}/prompts").json()
+    scene_id = prompts_list[0]["scene_id"]
+    # Directly set the image prompt status to DRAFT via DB
+    db = TestingSessionLocal()
+    from app.models.prompt import ImagePrompt
+    img_prompt = db.query(ImagePrompt).filter(ImagePrompt.scene_id == scene_id).first()
+    img_prompt.status = "DRAFT"
+    db.add(img_prompt)
+    db.commit()
+    db.close()
+
+    res = client.post(
+        f"/api/scenes/{scene_id}/assets/image/estimate",
+        json={"provider_name": "mock", "model_name": "mock-image"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is False
+    assert "approved" in data["message"].lower()
+
+
 # --- Helpers ---
 
 def _setup_approved_prompts_setup(proj_title):
