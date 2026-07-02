@@ -98,10 +98,15 @@ def generate_project_voiceover(
         voice_id=request.voice_id,
     )
 
-    # Only after successful generation, deactivate old voiceovers
-    audio_service.deactivate_project_voiceovers(db, project_id)
-
-    voiceover = audio_service.create_voiceover(db, voiceover_in)
+    # Create new voiceover and deactivate old ones atomically —
+    # if create fails, old active voiceover remains intact.
+    try:
+        voiceover = audio_service.create_voiceover_and_deactivate_old(db, voiceover_in)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to save voiceover: {str(e)}",
+        )
 
     if project.status == "CLIPS_GENERATED":
         project.status = "VOICEOVER_READY"

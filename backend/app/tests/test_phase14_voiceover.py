@@ -590,7 +590,78 @@ def test_failed_openai_tts_logs_failed_run():
 
 
 # ---------------------------------------------------------------------------
-# Test 21 — Full mock pipeline still reaches FINAL_RENDER_READY
+# Test 21 — Failed DB create preserves old active voiceover
+# ---------------------------------------------------------------------------
+
+def test_failed_db_create_preserves_old_active_voiceover():
+    """If the new voiceover record cannot be created after provider success,
+    the existing active voiceover must remain intact."""
+    project_id = _create_approved_assets_plan()
+
+    # Step 1: Generate a mock voiceover as the baseline
+    res1 = client.post(f"/api/projects/{project_id}/audio/voiceover/generate", json={
+        "provider_name": "mock",
+        "model_name": "mock-audio",
+    })
+    assert res1.status_code == 200
+    vo1 = res1.json()
+    vo1_id = vo1["id"]
+    assert vo1["is_active"] is True
+
+    # Step 2: Enable OpenAI TTS, mock the provider to succeed,
+    # but patch create_voiceover_and_deactivate_old to simulate a DB failure.
+    _enable_openai_tts()
+    mock_audio_bytes = b"fake-mp3-data"
+    from app.providers import openai_provider as _oai_mod
+    from app.providers.base import ProviderJob
+
+    mock_job = ProviderJob(
+        job_id="tts_db_fail_test",
+        status="COMPLETED",
+        result={
+            "provider_job_id": "tts_db_fail_test",
+            "file_url": None,
+            "duration_seconds": 0,
+            "format": "mp3",
+            "status": "COMPLETED",
+            "raw_response": {},
+            "_audio_bytes": mock_audio_bytes,
+        },
+    )
+
+    from app.services import audio_service as _audio_svc
+
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-key"}):
+        with patch.object(_oai_mod.OpenAITTSProvider, "generate_voiceover", return_value=mock_job):
+            with patch.object(
+                _audio_svc,
+                "create_voiceover_and_deactivate_old",
+                side_effect=Exception("Simulated DB write failure"),
+            ):
+                res2 = client.post(f"/api/projects/{project_id}/audio/voiceover/generate", json={
+                    "provider_name": "openai",
+                    "model_name": "gpt-4o-mini-tts",
+                    "voice_id": "alloy",
+                    "confirmed": True,
+                })
+
+    # Step 3: Assert the request returned a 400 error
+    assert res2.status_code == 400
+    assert "DB write failure" in res2.json()["detail"]
+
+    # Step 4: Assert the original mock voiceover is still active
+    active = client.get(f"/api/projects/{project_id}/audio/voiceover").json()
+    assert active["id"] == vo1_id
+    assert active["is_active"] is True
+    assert active["provider_name"] == "mock"
+
+    # Step 5: No project state regression — status should be VOICEOVER_READY
+    proj = client.get(f"/api/projects/{project_id}").json()
+    assert proj["status"] in ("VOICEOVER_READY", "CLIPS_GENERATED")
+
+
+# ---------------------------------------------------------------------------
+# Test 22 — Full mock pipeline still reaches FINAL_RENDER_READY
 # ---------------------------------------------------------------------------
 
 def test_full_mock_pipeline_reaches_final_render_ready():
@@ -634,7 +705,7 @@ def test_full_mock_pipeline_reaches_final_render_ready():
 
 
 # ---------------------------------------------------------------------------
-# Test 22 — Existing Phase 1–13 tests still pass (spot check)
+# Test 23 — Existing Phase 1–13 tests still pass (spot check)
 # ---------------------------------------------------------------------------
 
 def test_existing_mock_voiceover_still_works():
