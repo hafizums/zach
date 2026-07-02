@@ -229,7 +229,8 @@ const AudioSubtitles = () => {
                             {subtitles.map((sub, index) => (
                                 <div key={sub.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700 grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
                                     <div className="md:col-span-1 text-gray-500 font-mono text-sm pt-2">
-                                        #{sub.index + 1}
+                                        <div className="font-bold text-white mb-1">#{sub.index + 1}</div>
+                                        <div className={`text-xs ${sub.status === 'APPROVED' ? 'text-green-500' : 'text-yellow-500'}`}>{sub.status}</div>
                                     </div>
                                     <div className="md:col-span-2 space-y-2">
                                         <div>
@@ -253,14 +254,28 @@ const AudioSubtitles = () => {
                                             />
                                         </div>
                                     </div>
-                                    <div className="md:col-span-7">
-                                        <label className="text-xs text-gray-500 block mb-1">Text</label>
-                                        <textarea
-                                            value={sub.text}
-                                            onChange={(e) => handleSubtitleChange(index, 'text', e.target.value)}
-                                            rows="3"
-                                            className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white resize-none"
-                                        />
+                                    <div className="md:col-span-7 space-y-2">
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">Text</label>
+                                            <textarea
+                                                value={sub.text}
+                                                onChange={(e) => handleSubtitleChange(index, 'text', e.target.value)}
+                                                rows="2"
+                                                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white resize-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">Style</label>
+                                            <select
+                                                value={sub.style || 'bold_white_black_stroke'}
+                                                onChange={(e) => handleSubtitleChange(index, 'style', e.target.value)}
+                                                className="w-full bg-gray-900 border border-gray-700 rounded p-1 text-sm text-white"
+                                            >
+                                                <option value="bold_white_black_stroke">Bold White (Black Stroke)</option>
+                                                <option value="yellow_keyword_highlight">Yellow Keyword Highlight</option>
+                                                <option value="minimal_white">Minimal White</option>
+                                            </select>
+                                        </div>
                                     </div>
                                     <div className="md:col-span-2 pt-5">
                                         <button

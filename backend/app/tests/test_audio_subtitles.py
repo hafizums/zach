@@ -116,6 +116,16 @@ def test_list_project_subtitles():
     assert res.status_code == 200
     assert len(res.json()) > 0
 
+def test_list_voiceover_subtitles():
+    project_id = _create_approved_assets_plan()
+    vo_res = client.post(f"/api/projects/{project_id}/audio/voiceover/generate")
+    vo_id = vo_res.json()["id"]
+    client.post(f"/api/projects/{project_id}/subtitles/generate")
+    
+    res = client.get(f"/api/voiceovers/{vo_id}/subtitles")
+    assert res.status_code == 200
+    assert len(res.json()) > 0
+
 def test_update_subtitle_segment():
     project_id = _create_approved_assets_plan()
     client.post(f"/api/projects/{project_id}/audio/voiceover/generate")
@@ -149,6 +159,6 @@ def test_missing_entities():
     assert client.get("/api/projects/999/audio/voiceovers").status_code == 404
     assert client.post("/api/projects/999/subtitles/generate").status_code == 404
     assert client.get("/api/projects/999/subtitles").status_code == 404
-    assert client.get("/api/voiceovers/999/subtitles").status_code == 200 # Returns empty list
+    assert client.get("/api/voiceovers/999/subtitles").status_code == 404
     assert client.patch("/api/subtitles/999", json={"text": "hi"}).status_code == 404
     assert client.post("/api/projects/999/subtitles/approve").status_code == 404

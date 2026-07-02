@@ -39,6 +39,9 @@ def list_project_subtitles(project_id: int, db: Session = Depends(get_db)):
 
 @router.get("/voiceovers/{voiceover_id}/subtitles", response_model=List[SubtitleSegmentRead])
 def list_voiceover_subtitles(voiceover_id: int, db: Session = Depends(get_db)):
+    voiceover = audio_service.get_voiceover(db, voiceover_id)
+    if not voiceover:
+        raise HTTPException(status_code=404, detail="Voiceover not found")
     return subtitle_service.list_voiceover_subtitle_segments(db, voiceover_id)
 
 @router.patch("/subtitles/{segment_id}", response_model=SubtitleSegmentRead)

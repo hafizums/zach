@@ -14,6 +14,9 @@ def create_voiceover(db: Session, voiceover_in: VoiceoverCreate) -> Voiceover:
 def get_active_voiceover(db: Session, project_id: int) -> Optional[Voiceover]:
     return db.query(Voiceover).filter(Voiceover.project_id == project_id, Voiceover.is_active == True).first()
 
+def get_voiceover(db: Session, voiceover_id: int) -> Optional[Voiceover]:
+    return db.query(Voiceover).filter(Voiceover.id == voiceover_id).first()
+
 def list_project_voiceovers(db: Session, project_id: int) -> List[Voiceover]:
     return db.query(Voiceover).filter(Voiceover.project_id == project_id).all()
 
