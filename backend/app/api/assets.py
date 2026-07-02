@@ -4,11 +4,52 @@ from typing import List, Optional
 
 from app.core.database import get_db
 from app.schemas.asset_schema import SceneAssetPairRead, GeneratedImageRead, GeneratedClipRead
-from app.schemas.provider_schema import ImageGenerationRequest
-from app.services import asset_service, asset_generation_service, project_service, script_service, scene_service, prompt_service
+from app.schemas.provider_schema import ImageGenerationRequest, ImageGenerationEstimateRequest
+from app.services import asset_service, asset_generation_service, project_service, script_service, scene_service, prompt_service, model_catalog_service
 from app.models.prompt import ImagePrompt, VideoPrompt
 
 router = APIRouter()
+
+
+def _require_confirmation_if_paid(db: Session, provider_name: str, model_name: str, confirmed: bool) -> None:
+    model = model_catalog_service.get_model(db, provider_name, model_name, "image")
+    if not model or not model.is_enabled:
+        return
+    is_paid = model.cost_hint == "paid" or model.is_mock is False
+    if is_paid and not confirmed:
+        raise HTTPException(status_code=400, detail="Paid provider generation requires explicit confirmation.")
+
+
+@router.post("/projects/{project_id}/assets/images/estimate")
+def estimate_project_images(
+    project_id: int,
+    request: Optional[ImageGenerationEstimateRequest] = None,
+    db: Session = Depends(get_db),
+):
+    if request is None:
+        request = ImageGenerationEstimateRequest()
+
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return asset_generation_service.estimate_image_generation(
+        db, project, request.provider_name, request.model_name
+    )
+
+
+@router.post("/scenes/{scene_id}/assets/image/estimate")
+def estimate_scene_image_retry(
+    scene_id: int,
+    request: Optional[ImageGenerationEstimateRequest] = None,
+    db: Session = Depends(get_db),
+):
+    if request is None:
+        request = ImageGenerationEstimateRequest()
+
+    return asset_generation_service.estimate_scene_image_retry(
+        db, scene_id, request.provider_name, request.model_name
+    )
 
 @router.post("/projects/{project_id}/assets/images/generate", response_model=List[SceneAssetPairRead])
 def generate_project_images(
@@ -31,6 +72,8 @@ def generate_project_images(
     valid_statuses = ["VIDEO_PROMPTS_READY", "IMAGES_GENERATED", "CLIPS_GENERATED", "VOICEOVER_READY", "SUBTITLES_READY", "FINAL_RENDER_READY"]
     if project.status not in valid_statuses:
         raise HTTPException(status_code=400, detail="Cannot generate images before prompts are approved.")
+
+    _require_confirmation_if_paid(db, request.provider_name, request.model_name, request.confirmed)
 
     scenes = scene_service.list_script_scenes(db, approved_script.id)
 
@@ -109,6 +152,8 @@ def retry_scene_image(
     if request is None:
         request = ImageGenerationRequest(provider_name="mock", model_name="mock-image")
 
+    _require_confirmation_if_paid(db, request.provider_name, request.model_name, request.confirmed)
+
     scene = scene_service.get_scene(db, scene_id)
     if not scene:
         raise HTTPException(status_code=404, detail="Scene not found")
@@ -127,6 +172,7 @@ def retry_scene_image(
         db, project, script, scene, prompt_model,
         provider_name=request.provider_name,
         model_name=request.model_name,
+        operation="image_retry",
     )
     asset_service.create_generated_image(db, img_in)
     asset_service.deactivate_scene_images(db, scene.id, keep_latest=True)

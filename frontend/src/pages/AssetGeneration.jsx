@@ -1,7 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProject } from "../api/projects";
-import { listProjectAssets, generateProjectImages, generateProjectClips, retrySceneImage, retrySceneClip, approveAssets } from "../api/assets";
+import {
+  listProjectAssets,
+  generateProjectImages,
+  generateProjectClips,
+  retrySceneImage,
+  retrySceneClip,
+  approveAssets,
+  estimateProjectImages,
+  estimateSceneImageRetry,
+} from "../api/assets";
 import { listEnabledProviderModels } from "../api/providers";
 
 const AssetGeneration = () => {
@@ -13,10 +22,14 @@ const AssetGeneration = () => {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
+  const [retryErrors, setRetryErrors] = useState({});
 
   const [imageModels, setImageModels] = useState([]);
   const [selectedImageProvider, setSelectedImageProvider] = useState("mock");
   const [selectedImageModel, setSelectedImageModel] = useState("mock-image");
+
+  // Confirmation modal state
+  const [confirmModal, setConfirmModal] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -46,10 +59,36 @@ const AssetGeneration = () => {
   };
 
   const handleGenerateImages = async () => {
+    setError(null);
+    setRetryErrors({});
+    try {
+      setGenerating(true);
+      const estimate = await estimateProjectImages(projectId, selectedImageProvider, selectedImageModel);
+      if (estimate.requires_confirmation) {
+        setConfirmModal({
+          type: "project",
+          estimate,
+          onConfirm: async () => {
+            setConfirmModal(null);
+            await doGenerateImages();
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+        setGenerating(false);
+        return;
+      }
+      await doGenerateImages();
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to estimate image generation");
+      setGenerating(false);
+    }
+  };
+
+  const doGenerateImages = async () => {
     try {
       setGenerating(true);
       setError(null);
-      const newPairs = await generateProjectImages(projectId, selectedImageProvider, selectedImageModel);
+      const newPairs = await generateProjectImages(projectId, selectedImageProvider, selectedImageModel, true);
       setAssetPairs(newPairs);
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to generate images");
@@ -72,24 +111,57 @@ const AssetGeneration = () => {
   };
 
   const handleRetryImage = async (sceneId) => {
+    setRetryErrors(prev => ({ ...prev, [sceneId]: null }));
     try {
       setGenerating(true);
-      const updatedPair = await retrySceneImage(sceneId, selectedImageProvider, selectedImageModel);
+      const estimate = await estimateSceneImageRetry(sceneId, selectedImageProvider, selectedImageModel);
+      if (estimate.requires_confirmation) {
+        setConfirmModal({
+          type: "retry",
+          sceneId,
+          estimate,
+          onConfirm: async () => {
+            setConfirmModal(null);
+            await doRetryImage(sceneId);
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+        setGenerating(false);
+        return;
+      }
+      await doRetryImage(sceneId);
+    } catch (err) {
+      setRetryErrors(prev => ({ ...prev, [sceneId]: err.response?.data?.detail || "Failed to estimate retry" }));
+      setGenerating(false);
+    }
+  };
+
+  const doRetryImage = async (sceneId) => {
+    try {
+      setGenerating(true);
+      const updatedPair = await retrySceneImage(sceneId, selectedImageProvider, selectedImageModel, true);
       setAssetPairs(prev => prev.map(p => p.scene_id === sceneId ? updatedPair : p));
     } catch (err) {
-      alert("Failed to retry image");
+      setRetryErrors(prev => ({
+        ...prev,
+        [sceneId]: err.response?.data?.detail || "Failed to retry image",
+      }));
     } finally {
       setGenerating(false);
     }
   };
 
   const handleRetryClip = async (sceneId) => {
+    setRetryErrors(prev => ({ ...prev, [sceneId]: null }));
     try {
       setGenerating(true);
       const updatedPair = await retrySceneClip(sceneId);
       setAssetPairs(prev => prev.map(p => p.scene_id === sceneId ? updatedPair : p));
     } catch (err) {
-      alert("Failed to retry clip");
+      setRetryErrors(prev => ({
+        ...prev,
+        [sceneId]: err.response?.data?.detail || "Failed to retry clip",
+      }));
     } finally {
       setGenerating(false);
     }
@@ -102,7 +174,7 @@ const AssetGeneration = () => {
       await approveAssets(projectId);
       navigate(`/projects/${projectId}`);
     } catch (err) {
-      alert("Failed to approve assets");
+      setError("Failed to approve assets");
       setGenerating(false);
     }
   };
@@ -112,7 +184,7 @@ const AssetGeneration = () => {
 
   const validStatuses = ["VIDEO_PROMPTS_READY", "IMAGES_GENERATED", "CLIPS_GENERATED", "VOICEOVER_READY", "SUBTITLES_READY", "FINAL_RENDER_READY"];
   const isPromptsReady = validStatuses.includes(project?.status);
-  
+
   const hasImages = assetPairs.length > 0 && assetPairs[0].image;
   const hasClips = assetPairs.length > 0 && assetPairs[0].clip;
   const assetsApproved = hasClips && assetPairs[0].clip.status === "APPROVED";
@@ -128,11 +200,51 @@ const AssetGeneration = () => {
 
       {error && <div className="bg-red-50 text-red-600 p-4 rounded border border-red-200">{error}</div>}
 
+      {/* Confirmation Modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4 space-y-4">
+            <h3 className="text-lg font-semibold text-gray-800">Confirm Paid Generation</h3>
+            <div className="space-y-2 text-sm text-gray-600">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Provider:</span>
+                <span className="font-medium">{confirmModal.estimate.provider_name}/{confirmModal.estimate.model_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Images:</span>
+                <span className="font-medium">{confirmModal.estimate.estimated_jobs} image{confirmModal.estimate.estimated_jobs !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Cost:</span>
+                <span className="font-medium text-amber-600 uppercase">{confirmModal.estimate.cost_hint}</span>
+              </div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-800">
+              This will use paid provider credits. Are you sure you want to continue?
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={confirmModal.onCancel}
+                className="px-4 py-2 text-gray-600 bg-gray-100 rounded hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Confirm &amp; Generate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!isPromptsReady && (
         <div className="bg-yellow-50 text-yellow-800 p-6 rounded-lg border border-yellow-200 shadow-sm text-center">
           <h3 className="text-lg font-medium mb-2">Prompts not approved yet</h3>
           <p>You must approve image and video prompts before generating visual assets.</p>
-          <button 
+          <button
             onClick={() => navigate(`/projects/${projectId}/prompts`)}
             className="mt-4 px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
           >
@@ -173,17 +285,17 @@ const AssetGeneration = () => {
                   {hasImages ? "Regenerate Images" : "Generate Images"}
                 </button>
               </div>
-              
-              <button 
-                onClick={handleGenerateClips} 
+
+              <button
+                onClick={handleGenerateClips}
                 disabled={generating || !hasImages || assetsApproved}
                 className="px-4 py-2 bg-purple-100 text-purple-700 font-medium rounded hover:bg-purple-200 disabled:opacity-50"
               >
                 {hasClips ? "Regenerate Clips" : "Generate Clips"}
               </button>
 
-              <button 
-                onClick={handleApproveAll} 
+              <button
+                onClick={handleApproveAll}
                 disabled={assetsApproved || generating || !hasClips}
                 className="px-6 py-2 bg-green-600 text-white font-medium rounded hover:bg-green-700 disabled:opacity-50"
               >
@@ -205,14 +317,18 @@ const AssetGeneration = () => {
                   <div className="bg-gray-800 px-4 py-2 flex justify-between items-center">
                     <h3 className="text-white font-medium text-sm">Scene {pair.scene_number}</h3>
                   </div>
-                  
+
                   <div className="flex-1 flex flex-col p-4 space-y-4">
-                    
+
                     {/* Image Section */}
                     <div className="space-y-2 border border-gray-200 rounded p-2">
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Generated Image</span>
-                        {pair.image && <span className={`text-[10px] px-2 py-0.5 rounded-full ${pair.image.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>{pair.image.status}</span>}
+                        {pair.image && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${pair.image.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {pair.image.status}
+                          </span>
+                        )}
                       </div>
                       {pair.image ? (
                         <>
@@ -224,14 +340,36 @@ const AssetGeneration = () => {
                             )}
                           </div>
                           {pair.image.provider_name && (
-                            <div className="flex flex-wrap gap-1 mt-1">
+                            <div className="flex flex-wrap gap-1">
                               <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
                                 {pair.image.provider_name}/{pair.image.model_name}
                               </span>
+                              {pair.image.provider_job_id && (
+                                <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded font-mono" title={pair.image.provider_job_id}>
+                                  {pair.image.provider_job_id.slice(0, 12)}...
+                                </span>
+                              )}
                             </div>
                           )}
+                          {pair.image.file_url.startsWith('http') && (
+                            <a
+                              href={pair.image.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-blue-500 hover:underline block"
+                            >
+                              Open full image &nearr;
+                            </a>
+                          )}
+                          {retryErrors[pair.scene_id] && (
+                            <div className="text-[10px] text-red-500 bg-red-50 p-1 rounded">{retryErrors[pair.scene_id]}</div>
+                          )}
                           {!assetsApproved && (
-                            <button onClick={() => handleRetryImage(pair.scene_id)} disabled={generating} className="w-full text-xs py-1.5 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50">
+                            <button
+                              onClick={() => handleRetryImage(pair.scene_id)}
+                              disabled={generating}
+                              className="w-full text-xs py-1.5 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                            >
                               Retry Image
                             </button>
                           )}
@@ -242,12 +380,16 @@ const AssetGeneration = () => {
                         </div>
                       )}
                     </div>
-                    
+
                     {/* Clip Section */}
                     <div className="space-y-2 border border-gray-200 rounded p-2">
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Generated Clip</span>
-                        {pair.clip && <span className={`text-[10px] px-2 py-0.5 rounded-full ${pair.clip.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>{pair.clip.status}</span>}
+                        {pair.clip && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${pair.clip.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
+                            {pair.clip.status}
+                          </span>
+                        )}
                       </div>
                       {pair.clip ? (
                         <>
@@ -256,8 +398,15 @@ const AssetGeneration = () => {
                             <span className="text-[10px] text-gray-500 font-mono">{pair.clip.file_url.split('/').pop()}</span>
                             <span className="text-[10px] text-gray-400">{pair.clip.duration_seconds}s | {pair.clip.fps}fps</span>
                           </div>
+                          {retryErrors[pair.scene_id] && (
+                            <div className="text-[10px] text-red-500 bg-red-50 p-1 rounded">{retryErrors[pair.scene_id]}</div>
+                          )}
                           {!assetsApproved && (
-                            <button onClick={() => handleRetryClip(pair.scene_id)} disabled={generating} className="w-full text-xs py-1.5 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50">
+                            <button
+                              onClick={() => handleRetryClip(pair.scene_id)}
+                              disabled={generating}
+                              className="w-full text-xs py-1.5 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                            >
                               Retry Clip
                             </button>
                           )}

@@ -156,7 +156,7 @@ def test_image_generation_wavespeed_disabled_rejects():
 
     res = client.post(
         f"/api/projects/{project_id}/assets/images/generate",
-        json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+        json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
     )
     assert res.status_code == 400
     detail = res.json()["detail"]
@@ -188,7 +188,7 @@ def test_wavespeed_image_generation_mocked():
         ):
             res = client.post(
                 f"/api/projects/{project_id}/assets/images/generate",
-                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
             )
             assert res.status_code == 200
             assets = res.json()
@@ -228,7 +228,7 @@ def test_generated_images_have_provider_fields():
         with patch.object(WavespeedImageProvider, "generate_image", return_value=mock_job):
             res = client.post(
                 f"/api/projects/{project_id}/assets/images/generate",
-                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
             )
             assert res.status_code == 200
 
@@ -273,7 +273,7 @@ def test_wavespeed_run_logs_created():
         with patch.object(WavespeedImageProvider, "generate_image", return_value=mock_job):
             client.post(
                 f"/api/projects/{project_id}/assets/images/generate",
-                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
             )
 
     logs = client.get(f"/api/projects/{project_id}/provider-runs").json()
@@ -311,7 +311,7 @@ def test_wavespeed_run_logs_no_api_key_exposure():
         with patch.object(WavespeedImageProvider, "generate_image", return_value=mock_job):
             client.post(
                 f"/api/projects/{project_id}/assets/images/generate",
-                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
             )
 
     logs = client.get(f"/api/projects/{project_id}/provider-runs").json()
@@ -353,7 +353,7 @@ def test_wavespeed_malformed_response_preserves_existing():
         with patch.object(WavespeedImageProvider, "generate_image", return_value=bad_job):
             res = client.post(
                 f"/api/projects/{project_id}/assets/images/generate",
-                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
             )
             assert res.status_code == 400
             assert "file_url" in res.json()["detail"].lower()
@@ -392,7 +392,7 @@ def test_scene_retry_wavespeed_new_active_after_valid():
         with patch.object(WavespeedImageProvider, "generate_image", return_value=mock_job):
             res = client.post(
                 f"/api/scenes/{scene_id}/assets/image/retry",
-                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
             )
             assert res.status_code == 200
             new_img = res.json()["image"]
@@ -425,7 +425,7 @@ def test_retry_wavespeed_failure_keeps_old_active():
         ):
             res = client.post(
                 f"/api/scenes/{scene_id}/assets/image/retry",
-                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
             )
             assert res.status_code == 400
 
@@ -520,7 +520,7 @@ def test_partial_failure_keeps_all_original_images():
         ):
             res = client.post(
                 f"/api/projects/{project_id}/assets/images/generate",
-                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
             )
             assert res.status_code == 400
 
@@ -528,6 +528,291 @@ def test_partial_failure_keeps_all_original_images():
     after_assets = client.get(f"/api/projects/{project_id}/assets").json()
     after_image_ids = [p["image"]["id"] for p in after_assets]
     assert sorted(after_image_ids) == sorted(before_image_ids)
+
+
+# ===== Phase 12 Tests =====
+
+# --- Test 17: Project image estimate defaults to mock and requires no confirmation ---
+def test_estimate_project_defaults_mock():
+    project_id = _setup_approved_prompts_setup("est-mock-default")
+    res = client.post(
+        f"/api/projects/{project_id}/assets/images/estimate",
+        json={},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert data["requires_confirmation"] is False
+    assert data["cost_hint"] == "mock-free"
+    assert data["scene_count"] == 8
+    assert data["approved_prompt_count"] == 8
+
+
+# --- Test 18: Project image estimate for WaveSpeed disabled returns ok=false ---
+def test_estimate_project_wavespeed_disabled():
+    project_id = _setup_approved_prompts_setup("est-ws-disabled")
+    res = client.post(
+        f"/api/projects/{project_id}/assets/images/estimate",
+        json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is False
+    assert "disabled" in data["message"].lower()
+
+
+# --- Test 19: Project image estimate for WaveSpeed enabled without key returns ok=false ---
+def test_estimate_project_wavespeed_no_key():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("est-ws-nokey")
+    with patch.dict(os.environ, {}, clear=True):
+        res = client.post(
+            f"/api/projects/{project_id}/assets/images/estimate",
+            json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["ok"] is False
+        assert "WAVESPEED_API_KEY" in data["message"]
+
+
+# --- Test 20: Project image estimate for WaveSpeed enabled with key returns ok=true ---
+def test_estimate_project_wavespeed_with_key():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("est-ws-ok")
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        res = client.post(
+            f"/api/projects/{project_id}/assets/images/estimate",
+            json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["ok"] is True
+        assert data["requires_confirmation"] is True
+        assert data["cost_hint"] == "paid"
+        assert data["estimated_jobs"] == 8
+
+
+# --- Test 21: Estimate returns correct scene_count and approved_prompt_count ---
+def test_estimate_counts():
+    project_id = _setup_approved_prompts_setup("est-counts")
+    res = client.post(
+        f"/api/projects/{project_id}/assets/images/estimate",
+        json={},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["scene_count"] == 8
+    assert data["approved_prompt_count"] == 8
+    assert data["estimated_jobs"] == 8
+
+
+# --- Test 22: Mock image generation does not require confirmation ---
+def test_mock_generation_no_confirmation_required():
+    project_id = _setup_approved_prompts_setup("mock-noconfirm")
+    res = client.post(
+        f"/api/projects/{project_id}/assets/images/generate",
+        json={"provider_name": "mock", "model_name": "mock-image", "confirmed": False},
+    )
+    assert res.status_code == 200
+
+
+# --- Test 23: WaveSpeed generation without confirmation returns 400 ---
+def test_wavespeed_generation_without_confirmation():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("ws-noconfirm")
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        res = client.post(
+            f"/api/projects/{project_id}/assets/images/generate",
+            json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": False},
+        )
+        assert res.status_code == 400
+        assert "confirmation" in res.json()["detail"].lower()
+
+
+# --- Test 24: WaveSpeed generation with confirmation calls mocked provider ---
+def test_wavespeed_generation_with_confirmation():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("ws-confirmed")
+
+    mock_job = ProviderJob(
+        job_id="ws_confirmed_job",
+        status="COMPLETED",
+        result={
+            "provider_job_id": "ws_confirmed_job",
+            "file_url": "https://fake.wavespeed.ai/images/confirmed.png",
+            "thumbnail_url": "https://fake.wavespeed.ai/images/confirmed_thumb.png",
+            "width": 1080,
+            "height": 1920,
+            "status": "COMPLETED",
+            "raw_response": {},
+        },
+    )
+
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        with patch.object(WavespeedImageProvider, "generate_image", return_value=mock_job):
+            res = client.post(
+                f"/api/projects/{project_id}/assets/images/generate",
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
+            )
+            assert res.status_code == 200
+            assets = res.json()
+            assert len(assets) == 8
+            assert assets[0]["image"]["provider_name"] == "wavespeed"
+
+
+# --- Test 25: Scene image estimate defaults to mock and requires no confirmation ---
+def test_estimate_scene_defaults_mock():
+    project_id = _setup_approved_prompts_setup("est-scene-mock")
+    gen = client.post(f"/api/projects/{project_id}/assets/images/generate", json={})
+    scene_id = gen.json()[0]["scene_id"]
+
+    res = client.post(
+        f"/api/scenes/{scene_id}/assets/image/estimate",
+        json={},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert data["requires_confirmation"] is False
+    assert data["cost_hint"] == "mock-free"
+
+
+# --- Test 26: Scene image estimate for WaveSpeed requires confirmation ---
+def test_estimate_scene_wavespeed_requires_confirmation():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("est-scene-ws")
+    gen = client.post(f"/api/projects/{project_id}/assets/images/generate", json={})
+    scene_id = gen.json()[0]["scene_id"]
+
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        res = client.post(
+            f"/api/scenes/{scene_id}/assets/image/estimate",
+            json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["ok"] is True
+        assert data["requires_confirmation"] is True
+        assert data["cost_hint"] == "paid"
+        assert data["estimated_jobs"] == 1
+
+
+# --- Test 27: WaveSpeed retry without confirmation returns 400 ---
+def test_wavespeed_retry_without_confirmation():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("ws-retry-noconfirm")
+    gen = client.post(f"/api/projects/{project_id}/assets/images/generate", json={})
+    scene_id = gen.json()[0]["scene_id"]
+
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        res = client.post(
+            f"/api/scenes/{scene_id}/assets/image/retry",
+            json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": False},
+        )
+        assert res.status_code == 400
+        assert "confirmation" in res.json()["detail"].lower()
+
+
+# --- Test 28: WaveSpeed retry with confirmation calls mocked provider ---
+def test_wavespeed_retry_with_confirmation():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("ws-retry-confirmed")
+    gen = client.post(f"/api/projects/{project_id}/assets/images/generate", json={})
+    scene_id = gen.json()[0]["scene_id"]
+    old_img_id = gen.json()[0]["image"]["id"]
+
+    mock_job = ProviderJob(
+        job_id="ws_retry_confirmed_job",
+        status="COMPLETED",
+        result={
+            "provider_job_id": "ws_retry_confirmed_job",
+            "file_url": "https://fake.wavespeed.ai/images/retry_confirmed.png",
+            "thumbnail_url": "https://fake.wavespeed.ai/images/retry_confirmed_thumb.png",
+            "width": 1080,
+            "height": 1920,
+            "status": "COMPLETED",
+            "raw_response": {},
+        },
+    )
+
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        with patch.object(WavespeedImageProvider, "generate_image", return_value=mock_job):
+            res = client.post(
+                f"/api/scenes/{scene_id}/assets/image/retry",
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
+            )
+            assert res.status_code == 200
+            new_img = res.json()["image"]
+            assert new_img["id"] != old_img_id
+            assert new_img["is_active"] is True
+            assert new_img["provider_name"] == "wavespeed"
+
+
+# --- Test 29: Failed WaveSpeed generation logs a failed provider run ---
+def test_wavespeed_failed_generation_logs_failed_run():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("ws-failed-log")
+
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        with patch.object(
+            WavespeedImageProvider,
+            "generate_image",
+            side_effect=Exception("Simulated WaveSpeed failure"),
+        ):
+            client.post(
+                f"/api/projects/{project_id}/assets/images/generate",
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
+            )
+
+    logs = client.get(f"/api/projects/{project_id}/provider-runs").json()
+    failed_logs = [l for l in logs if l["status"] == "FAILED"]
+    assert len(failed_logs) >= 1
+    for log in failed_logs:
+        assert log["provider_name"] == "wavespeed"
+        assert log["modality"] == "image"
+        assert log["error_message"] is not None
+        req_str = json.dumps(log.get("request_json", {}))
+        assert FAKE_API_KEY not in req_str
+
+
+# --- Test 30: Provider run logs include operation image_generation or image_retry ---
+def test_run_logs_have_operation_field():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("ws-op-log")
+
+    mock_job = ProviderJob(
+        job_id="ws_op_job",
+        status="COMPLETED",
+        result={
+            "provider_job_id": "ws_op_job",
+            "file_url": "https://fake.wavespeed.ai/images/op.png",
+            "thumbnail_url": "https://fake.wavespeed.ai/images/op_thumb.png",
+            "width": 1080,
+            "height": 1920,
+            "status": "COMPLETED",
+            "raw_response": {},
+        },
+    )
+
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        with patch.object(WavespeedImageProvider, "generate_image", return_value=mock_job):
+            client.post(
+                f"/api/projects/{project_id}/assets/images/generate",
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
+            )
+            # Also call retry on first scene
+            assets = client.get(f"/api/projects/{project_id}/assets").json()
+            scene_id = assets[0]["scene_id"]
+            client.post(
+                f"/api/scenes/{scene_id}/assets/image/retry",
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell", "confirmed": True},
+            )
+
+    logs = client.get(f"/api/projects/{project_id}/provider-runs").json()
+    operations = {l["operation"] for l in logs if l["modality"] == "image"}
+    assert "image_generation" in operations
+    assert "image_retry" in operations
 
 
 # --- Helpers ---

@@ -74,3 +74,22 @@ class GenerationRequest(BaseModel):
 class ImageGenerationRequest(BaseModel):
     provider_name: str = "mock"
     model_name: str = "mock-image"
+    confirmed: bool = False
+
+
+class ImageGenerationEstimateRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-image"
+
+
+class ImageGenerationEstimateResponse(BaseModel):
+    ok: bool
+    provider_name: str
+    model_name: str
+    modality: str = "image"
+    scene_count: int = 0
+    approved_prompt_count: int = 0
+    estimated_jobs: int = 0
+    cost_hint: str = "mock-free"
+    requires_confirmation: bool = False
+    message: str = ""
