@@ -17,6 +17,8 @@ def generate_project_images(project_id: int, db: Session = Depends(get_db)):
         
     scripts = script_service.list_project_scripts(db, project_id)
     approved_script = next((s for s in scripts if s.status == "APPROVED"), None)
+    if not approved_script:
+        raise HTTPException(status_code=400, detail="No approved script found for this project.")
     
     # Needs VIDEO_PROMPTS_READY or above
     valid_statuses = ["VIDEO_PROMPTS_READY", "IMAGES_GENERATED", "CLIPS_GENERATED", "VOICEOVER_READY", "SUBTITLES_READY", "FINAL_RENDER_READY"]
@@ -24,6 +26,12 @@ def generate_project_images(project_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Cannot generate images before prompts are approved.")
         
     scenes = scene_service.list_script_scenes(db, approved_script.id)
+    
+    # Validation pass
+    for scene in scenes:
+        pair = prompt_service.list_scene_prompt_pair(db, scene.id)
+        if not pair or not pair.image_prompt or pair.image_prompt.status != "APPROVED":
+            raise HTTPException(status_code=400, detail=f"Image prompt for scene {scene.scene_number} is not APPROVED.")
     
     for scene in scenes:
         pair = prompt_service.list_scene_prompt_pair(db, scene.id)
@@ -50,14 +58,23 @@ def generate_project_clips(project_id: int, db: Session = Depends(get_db)):
         
     scripts = script_service.list_project_scripts(db, project_id)
     approved_script = next((s for s in scripts if s.status == "APPROVED"), None)
+    if not approved_script:
+        raise HTTPException(status_code=400, detail="No approved script found for this project.")
     
     scenes = scene_service.list_script_scenes(db, approved_script.id)
     
+    # Validation pass
     for scene in scenes:
+        pair = prompt_service.list_scene_prompt_pair(db, scene.id)
+        if not pair or not pair.video_prompt or pair.video_prompt.status != "APPROVED":
+            raise HTTPException(status_code=400, detail=f"Video prompt for scene {scene.scene_number} is not APPROVED.")
+            
         img = asset_service.get_active_image_for_scene(db, scene.id)
         if not img:
             raise HTTPException(status_code=400, detail=f"Cannot generate clip for scene {scene.scene_number} because it has no active image.")
             
+    for scene in scenes:
+        img = asset_service.get_active_image_for_scene(db, scene.id)
         pair = prompt_service.list_scene_prompt_pair(db, scene.id)
         if pair and pair.video_prompt:
             asset_service.deactivate_scene_clips(db, scene.id)
@@ -79,6 +96,8 @@ def retry_scene_image(scene_id: int, db: Session = Depends(get_db)):
     pair = prompt_service.list_scene_prompt_pair(db, scene.id)
     if not pair or not pair.image_prompt:
         raise HTTPException(status_code=400, detail="Missing image prompt")
+    if pair.image_prompt.status != "APPROVED":
+        raise HTTPException(status_code=400, detail="Image prompt must be APPROVED to generate assets.")
         
     asset_service.deactivate_scene_images(db, scene.id)
     prompt_model = db.query(ImagePrompt).filter(ImagePrompt.id == pair.image_prompt.id).first()
@@ -93,16 +112,18 @@ def retry_scene_clip(scene_id: int, db: Session = Depends(get_db)):
     if not scene:
         raise HTTPException(status_code=404, detail="Scene not found")
         
-    img = asset_service.get_active_image_for_scene(db, scene.id)
-    if not img:
-        raise HTTPException(status_code=400, detail="Cannot generate clip without active image")
-        
     project = project_service.get_project(db, scene.project_id)
     script = script_service.get_script(db, scene.script_id)
     
     pair = prompt_service.list_scene_prompt_pair(db, scene.id)
     if not pair or not pair.video_prompt:
         raise HTTPException(status_code=400, detail="Missing video prompt")
+    if pair.video_prompt.status != "APPROVED":
+        raise HTTPException(status_code=400, detail="Video prompt must be APPROVED to generate assets.")
+        
+    img = asset_service.get_active_image_for_scene(db, scene.id)
+    if not img:
+        raise HTTPException(status_code=400, detail="Cannot generate clip without active image")
         
     asset_service.deactivate_scene_clips(db, scene.id)
     prompt_model = db.query(VideoPrompt).filter(VideoPrompt.id == pair.video_prompt.id).first()

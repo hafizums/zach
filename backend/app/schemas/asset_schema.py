@@ -15,6 +15,7 @@ class GeneratedImageCreate(GeneratedImageBase):
     script_id: int
     scene_id: int
     image_prompt_id: int
+    provider_job_id: Optional[str] = None
 
 class GeneratedImageRead(GeneratedImageBase):
     id: int
@@ -44,6 +45,7 @@ class GeneratedClipCreate(GeneratedClipBase):
     scene_id: int
     video_prompt_id: int
     source_image_id: int
+    provider_job_id: Optional[str] = None
 
 class GeneratedClipRead(GeneratedClipBase):
     id: int

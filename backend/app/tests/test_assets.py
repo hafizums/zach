@@ -56,6 +56,7 @@ def test_generate_images_with_approved_prompts():
     assert pair["image"] is not None
     assert pair["image"]["is_active"] is True
     assert "data:image/svg+xml" in pair["image"]["file_url"]
+    assert pair["image"]["provider_job_id"] is not None
     
     # Project status should now be IMAGES_GENERATED
     proj = client.get(f"/api/projects/{project_id}").json()
@@ -64,6 +65,10 @@ def test_generate_images_with_approved_prompts():
 def test_generate_images_without_approved_prompts():
     proj_res = client.post("/api/projects/", json={"title": "No Prompts Proj", "topic": "Testing"})
     project_id = proj_res.json()["id"]
+    
+    script_res = client.post(f"/api/projects/{project_id}/scripts/generate", json={})
+    script_id = script_res.json()["id"]
+    client.post(f"/api/scripts/{script_id}/approve")
     
     res = client.post(f"/api/projects/{project_id}/assets/images/generate")
     assert res.status_code == 400
@@ -81,7 +86,8 @@ def test_generate_clips_with_active_images():
     pair = assets[0]
     assert pair["clip"] is not None
     assert pair["clip"]["is_active"] is True
-    assert "mock-vid" in pair["clip"]["file_url"]
+    assert "vid_mock" in pair["clip"]["file_url"]
+    assert pair["clip"]["provider_job_id"] is not None
 
 def test_generate_clips_without_images():
     project_id = _create_approved_prompts_plan()
@@ -139,6 +145,63 @@ def test_approve_assets():
         
     res_proj = client.get(f"/api/projects/{project_id}")
     assert res_proj.json()["status"] == "CLIPS_GENERATED"
+
+def test_generate_images_with_no_approved_script():
+    proj_res = client.post("/api/projects/", json={"title": "No Script Proj", "topic": "Testing"})
+    project_id = proj_res.json()["id"]
+    
+    res = client.post(f"/api/projects/{project_id}/assets/images/generate")
+    assert res.status_code == 400
+    assert "No approved script found" in res.json()["detail"]
+
+def test_generate_clips_with_no_approved_script():
+    proj_res = client.post("/api/projects/", json={"title": "No Script Proj 2", "topic": "Testing"})
+    project_id = proj_res.json()["id"]
+    
+    res = client.post(f"/api/projects/{project_id}/assets/clips/generate")
+    assert res.status_code == 400
+    assert "No approved script found" in res.json()["detail"]
+
+def _create_unapproved_prompts_plan():
+    proj_res = client.post("/api/projects/", json={"title": "Unapproved Prompts Proj", "topic": "Testing", "duration_target": 40})
+    project_id = proj_res.json()["id"]
+    
+    script_res = client.post(f"/api/projects/{project_id}/scripts/generate", json={})
+    script_id = script_res.json()["id"]
+    client.post(f"/api/scripts/{script_id}/approve")
+    
+    client.post(f"/api/projects/{project_id}/scenes/generate")
+    client.post(f"/api/projects/{project_id}/scenes/approve")
+    
+    client.post(f"/api/projects/{project_id}/prompts/generate")
+    # intentionally NOT approving prompts
+    
+    # We also need to set the project status manually to VIDEO_PROMPTS_READY so the first check passes,
+    # and it fails on the prompt iteration check. But wait, if prompts aren't approved, project status is SCENE_PLAN_READY.
+    # The first guard for project.status will fail before prompt checks.
+    # To test the prompt iteration check, we can just call retry endpoints directly.
+    return project_id
+
+def test_generate_images_refuses_draft_prompts():
+    project_id = _create_unapproved_prompts_plan()
+    
+    # Try to retry image for the first scene
+    res_prompts = client.get(f"/api/projects/{project_id}/prompts")
+    scene_id = res_prompts.json()[0]["scene_id"]
+    
+    res = client.post(f"/api/scenes/{scene_id}/assets/image/retry")
+    assert res.status_code == 400
+    assert "must be APPROVED" in res.json()["detail"]
+
+def test_generate_clips_refuses_draft_prompts():
+    project_id = _create_unapproved_prompts_plan()
+    
+    res_prompts = client.get(f"/api/projects/{project_id}/prompts")
+    scene_id = res_prompts.json()[0]["scene_id"]
+    
+    res_clip = client.post(f"/api/scenes/{scene_id}/assets/clip/retry")
+    assert res_clip.status_code == 400
+    assert "must be APPROVED" in res_clip.json()["detail"]
 
 def test_missing_entities():
     assert client.post("/api/projects/999/assets/images/generate").status_code == 404
