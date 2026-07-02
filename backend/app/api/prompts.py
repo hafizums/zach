@@ -42,6 +42,13 @@ def list_project_prompts(project_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Project not found")
     return prompt_service.list_project_prompt_pairs(db, project_id)
 
+@router.get("/scenes/{scene_id}/prompts", response_model=ScenePromptPairRead)
+def list_scene_prompts(scene_id: int, db: Session = Depends(get_db)):
+    pair = prompt_service.list_scene_prompt_pair(db, scene_id)
+    if not pair:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    return pair
+
 @router.patch("/image-prompts/{prompt_id}", response_model=ImagePromptRead)
 def update_image_prompt(prompt_id: int, prompt_in: ImagePromptUpdate, db: Session = Depends(get_db)):
     prompt = prompt_service.get_image_prompt(db, prompt_id)

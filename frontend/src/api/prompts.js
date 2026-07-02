@@ -10,6 +10,11 @@ export const listProjectPrompts = async (projectId) => {
   return response.data;
 };
 
+export const listScenePrompts = async (sceneId) => {
+  const response = await apiClient.get(`/api/scenes/${sceneId}/prompts`);
+  return response.data;
+};
+
 export const updateImagePrompt = async (promptId, data) => {
   const response = await apiClient.patch(`/api/image-prompts/${promptId}`, data);
   return response.data;

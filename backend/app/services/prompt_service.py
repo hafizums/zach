@@ -102,3 +102,18 @@ def approve_project_prompts(db: Session, project_id: int, script_id: int) -> boo
     
     db.commit()
     return True
+
+def list_scene_prompt_pair(db: Session, scene_id: int) -> Optional[ScenePromptPairRead]:
+    scene = db.query(Scene).filter(Scene.id == scene_id).first()
+    if not scene:
+        return None
+        
+    img_prompt = db.query(ImagePrompt).filter(ImagePrompt.scene_id == scene_id).first()
+    vid_prompt = db.query(VideoPrompt).filter(VideoPrompt.scene_id == scene_id).first()
+    
+    return ScenePromptPairRead(
+        scene_id=scene.id,
+        scene_number=scene.scene_number,
+        image_prompt=img_prompt,
+        video_prompt=vid_prompt
+    )

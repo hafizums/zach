@@ -118,9 +118,46 @@ def test_approve_prompts():
     res_proj = client.get(f"/api/projects/{project_id}")
     assert res_proj.json()["status"] == "VIDEO_PROMPTS_READY"
 
+def test_generate_prompts_regeneration_replaces_old_prompts():
+    project_id, _ = _create_approved_scene_plan()
+    
+    # First generation
+    gen1 = client.post(f"/api/projects/{project_id}/prompts/generate")
+    pairs1 = gen1.json()
+    assert len(pairs1) == 8
+    first_img_ids = {p["image_prompt"]["id"] for p in pairs1}
+    first_vid_ids = {p["video_prompt"]["id"] for p in pairs1}
+    
+    # Second generation
+    gen2 = client.post(f"/api/projects/{project_id}/prompts/generate")
+    pairs2 = gen2.json()
+    assert len(pairs2) == 8
+    
+    # Ensure project prompt pair count is still 8
+    res = client.get(f"/api/projects/{project_id}/prompts")
+    assert len(res.json()) == 8
+
+def test_get_scene_prompts_existing():
+    project_id, _ = _create_approved_scene_plan()
+    gen = client.post(f"/api/projects/{project_id}/prompts/generate")
+    pairs = gen.json()
+    scene_id = pairs[0]["scene_id"]
+    
+    res = client.get(f"/api/scenes/{scene_id}/prompts")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["scene_id"] == scene_id
+    assert data["image_prompt"] is not None
+    assert data["video_prompt"] is not None
+
+def test_get_scene_prompts_missing():
+    res = client.get("/api/scenes/999/prompts")
+    assert res.status_code == 404
+
 def test_missing_entities():
     assert client.post("/api/projects/999/prompts/generate").status_code == 404
     assert client.get("/api/projects/999/prompts").status_code == 404
     assert client.patch("/api/image-prompts/999", json={}).status_code == 404
     assert client.patch("/api/video-prompts/999", json={}).status_code == 404
     assert client.post("/api/projects/999/prompts/approve").status_code == 404
+    assert client.get("/api/scenes/999/prompts").status_code == 404
