@@ -23,20 +23,21 @@ def generate_scenes(project_id: int, request: SceneGenerateRequest = None, db: S
     
     if not approved_script:
         raise HTTPException(status_code=400, detail="Cannot generate scenes without an APPROVED script.")
-        
-    # Delete old scenes for this script cleanly
-    scene_service.delete_project_scenes_for_script(db, approved_script.id)
-    
-    # Generate new scenes
+
+    # Generate new scenes FIRST — validate before deleting anything
     scenes_in = scene_planner_service.generate_mock_scenes(
         db,
-        project, 
+        project,
         approved_script,
         provider_name=request.provider_name,
-        model_name=request.model_name
+        model_name=request.model_name,
     )
+
+    # Only delete old scenes after generation succeeds and is validated
+    scene_service.delete_project_scenes_for_script(db, approved_script.id)
+
     scenes = scene_service.bulk_create_scenes(db, scenes_in)
-    
+
     return scenes
 
 @router.get("/projects/{project_id}/scenes", response_model=List[SceneRead])

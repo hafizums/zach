@@ -5,6 +5,7 @@ from openai import OpenAI
 from fastapi import HTTPException
 from .base import LLMProvider
 
+
 class OpenAILLMProvider(LLMProvider):
     def __init__(self):
         self.client = None
@@ -18,42 +19,49 @@ class OpenAILLMProvider(LLMProvider):
         return self.client
 
     def generate_text(self, prompt: str, model_name: str, system_prompt: Optional[str] = None) -> Dict:
+        """Generate free-form text using the OpenAI Responses API."""
         client = self._get_client()
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-        
-        response = client.chat.completions.create(
+
+        kwargs = dict(
             model=model_name,
-            messages=messages
+            input=prompt,
         )
-        
+        if system_prompt:
+            kwargs["instructions"] = system_prompt
+
+        response = client.responses.create(**kwargs)
+
+        text = response.output_text if hasattr(response, "output_text") else response.output[0].content[0].text
         return {
-            "text": response.choices[0].message.content,
-            "provider_job_id": response.id
+            "text": text,
+            "provider_job_id": response.id,
         }
 
     def generate_structured_json(self, prompt: str, model_name: str, schema: Dict, system_prompt: Optional[str] = None) -> Dict:
+        """Generate structured JSON using the OpenAI Responses API with text format."""
         client = self._get_client()
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
 
-        response = client.chat.completions.create(
+        kwargs = dict(
             model=model_name,
-            messages=messages,
-            response_format={
-                "type": "json_schema",
-                "json_schema": schema
-            }
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "structured_output",
+                    "schema": schema,
+                    "strict": True,
+                }
+            },
         )
-        
-        content = response.choices[0].message.content
-        if not content:
+        if system_prompt:
+            kwargs["instructions"] = system_prompt
+
+        response = client.responses.create(**kwargs)
+
+        text = response.output_text if hasattr(response, "output_text") else response.output[0].content[0].text
+        if not text:
             raise ValueError("No content returned from OpenAI")
-            
-        parsed = json.loads(content)
+
+        parsed = json.loads(text)
         parsed["provider_job_id"] = response.id
         return parsed

@@ -28,21 +28,22 @@ def generate_prompts(project_id: int, request: PromptGenerateRequest = None, db:
     scenes = scene_service.list_script_scenes(db, approved_script.id)
     if not scenes or any(s.status != "APPROVED" for s in scenes):
         raise HTTPException(status_code=400, detail="Cannot generate prompts without an APPROVED scene plan.")
-        
-    # Delete old prompts cleanly
-    prompt_service.delete_project_prompts_for_script(db, approved_script.id)
-    
-    # Generate new prompts
+
+    # Generate new prompts FIRST — validate before deleting anything
     image_prompts_in, video_prompts_in = prompt_generation_service.generate_mock_prompt_pairs(
         db,
-        project, 
-        approved_script, 
+        project,
+        approved_script,
         scenes,
         provider_name=request.provider_name,
-        model_name=request.model_name
+        model_name=request.model_name,
     )
+
+    # Only delete old prompts after generation succeeds and is validated
+    prompt_service.delete_project_prompts_for_script(db, approved_script.id)
+
     prompt_service.bulk_create_prompt_pairs(db, image_prompts_in, video_prompts_in)
-    
+
     return prompt_service.list_project_prompt_pairs(db, project_id)
 
 @router.get("/projects/{project_id}/prompts", response_model=List[ScenePromptPairRead])

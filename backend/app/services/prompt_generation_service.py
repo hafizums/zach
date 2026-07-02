@@ -30,10 +30,17 @@ def generate_mock_prompt_pairs(
     
     if provider_name == "openai":
         # Build prompt to generate pairs for all scenes at once
-        prompt = f"Create image and video prompts for {len(scenes)} scenes.\n"
+        prompt = (
+            f"Create image and video prompt pairs for each of the {len(scenes)} scenes below.\n"
+            "Each pair must include: image_prompt_text, image_negative_prompt, image_style_lock, "
+            "video_prompt_text, video_negative_prompt, video_motion_strength, video_camera_lock.\n"
+        )
         for s in scenes:
-            prompt += f"Scene {s.scene_number}: {s.visual_summary}\n"
-            
+            prompt += (
+                f"Scene {s.scene_number}: {s.visual_summary} "
+                f"(camera: {s.camera_direction or 'static'}, motion: {s.motion_direction or 'subtle'})\n"
+            )
+
         schema = {
             "type": "object",
             "properties": {
@@ -44,68 +51,98 @@ def generate_mock_prompt_pairs(
                         "properties": {
                             "scene_number": {"type": "integer"},
                             "image_prompt_text": {"type": "string"},
-                            "video_prompt_text": {"type": "string"}
+                            "image_negative_prompt": {"type": "string"},
+                            "image_style_lock": {"type": "string"},
+                            "video_prompt_text": {"type": "string"},
+                            "video_negative_prompt": {"type": "string"},
+                            "video_motion_strength": {"type": "string"},
+                            "video_camera_lock": {"type": "string"},
                         },
-                        "required": ["scene_number", "image_prompt_text", "video_prompt_text"],
-                        "additionalProperties": False
-                    }
+                        "required": [
+                            "scene_number",
+                            "image_prompt_text",
+                            "image_negative_prompt",
+                            "image_style_lock",
+                            "video_prompt_text",
+                            "video_negative_prompt",
+                            "video_motion_strength",
+                            "video_camera_lock",
+                        ],
+                        "additionalProperties": False,
+                    },
                 }
             },
             "required": ["prompts"],
-            "additionalProperties": False
+            "additionalProperties": False,
         }
-        
+
+        REQUIRED_ITEM_FIELDS = {
+            "scene_number", "image_prompt_text", "image_negative_prompt", "image_style_lock",
+            "video_prompt_text", "video_negative_prompt", "video_motion_strength", "video_camera_lock",
+        }
+
         try:
             result = provider.generate_structured_json(
                 prompt=prompt,
                 model_name=model_name,
                 schema=schema,
-                system_prompt="You are an AI generation expert. Create detailed image and video prompts."
+                system_prompt="You are an AI generation expert. Create detailed, cinematic image and video prompts for a 3D educational short-form video.",
             )
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Prompt generation failed: {str(e)}")
-            
+
         if not isinstance(result, dict) or "prompts" not in result or not isinstance(result["prompts"], list):
             raise HTTPException(status_code=400, detail="Malformed prompts generated")
-            
+
         if len(result["prompts"]) != len(scenes):
-            raise HTTPException(status_code=400, detail="Generated prompts count does not match scenes count")
-            
-        # Map generated prompts by scene number
-        generated_prompts_map = {p["scene_number"]: p for p in result["prompts"]}
-        
+            raise HTTPException(
+                status_code=400,
+                detail=f"Generated prompts count ({len(result['prompts'])}) does not match scenes count ({len(scenes)})",
+            )
+
+        # Validate every item has all required fields before touching the DB
+        generated_prompts_map: Dict = {}
+        for item in result["prompts"]:
+            missing = REQUIRED_ITEM_FIELDS - set(item.keys())
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Prompt item for scene {item.get('scene_number', '?')} missing fields: {missing}",
+                )
+            generated_prompts_map[item["scene_number"]] = item
+
         for scene in scenes:
             gen_data = generated_prompts_map.get(scene.scene_number)
             if not gen_data:
                 raise HTTPException(status_code=400, detail=f"Missing prompts for scene {scene.scene_number}")
-                
+
             img_prompt = ImagePromptCreate(
                 project_id=project.id,
                 script_id=script.id,
                 scene_id=scene.id,
-                prompt_text=f"{base_image_prompt}, {gen_data['image_prompt_text']}",
-                negative_prompt=base_image_negative,
-                style_lock="3d_explainer_v1",
+                prompt_text=gen_data["image_prompt_text"],
+                negative_prompt=gen_data["image_negative_prompt"],
+                style_lock=gen_data["image_style_lock"],
                 aspect_ratio="9:16",
                 provider="mock",
-                model="mock-image"
+                model="mock-image",
             )
             image_prompts.append(img_prompt)
-            
+
             vid_prompt = VideoPromptCreate(
                 project_id=project.id,
                 script_id=script.id,
                 scene_id=scene.id,
-                prompt_text=gen_data['video_prompt_text'],
-                negative_prompt=base_image_negative,
+                prompt_text=gen_data["video_prompt_text"],
+                negative_prompt=gen_data["video_negative_prompt"],
                 duration_seconds=scene.duration_seconds,
-                motion_strength="medium",
-                camera_lock="preserve composition and lighting",
+                motion_strength=gen_data["video_motion_strength"],
+                camera_lock=gen_data["video_camera_lock"],
                 provider="mock",
-                model="mock-video"
+                model="mock-video",
             )
             video_prompts.append(vid_prompt)
-            
+
         provider_run_service.create_run_log(db, ProviderRunLogCreate(
             project_id=project.id,
             provider_name=provider_name,
@@ -114,9 +151,9 @@ def generate_mock_prompt_pairs(
             operation="prompt_generation",
             provider_job_id=result.get("provider_job_id"),
             request_json=prompt,
-            response_json=result
+            response_json=result,
         ))
-        
+
         return image_prompts, video_prompts
 
     # --- Fallback to deterministic mock logic ---
