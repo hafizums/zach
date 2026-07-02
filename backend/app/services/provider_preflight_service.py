@@ -25,17 +25,15 @@ def preflight_provider_model(db: Session, provider_name: str, model_name: str, m
             message=f"Model '{model_name}' is currently disabled."
         )
         
-    # 3. Check if provider instance exists in the internal registry (unless it's mock render which might not need one)
-    # The requirement says: validate provider exists in registry
-    if modality != "render" or provider_registry.validate_provider_available(provider_name, modality):
-        if not provider_registry.validate_provider_available(provider_name, modality):
-            return ProviderPreflightResult(
-                ok=False,
-                provider_name=provider_name,
-                model_name=model_name,
-                modality=modality,
-                message=f"Provider '{provider_name}' does not have a registered adapter for modality '{modality}'."
-            )
+    # 3. Check if provider instance exists in the internal registry
+    if not provider_registry.validate_provider_available(provider_name, modality):
+        return ProviderPreflightResult(
+            ok=False,
+            provider_name=provider_name,
+            model_name=model_name,
+            modality=modality,
+            message=f"Provider '{provider_name}' does not have a registered adapter for modality '{modality}'."
+        )
 
     return ProviderPreflightResult(
         ok=True,

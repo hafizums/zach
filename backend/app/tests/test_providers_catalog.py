@@ -27,11 +27,8 @@ def override_get_db():
         from app.services.model_catalog_service import seed_default_mock_models
         from app.models.provider import ProviderModel
         count = db.query(ProviderModel).count()
-        print(f"Override get_db called. Current count: {count}")
         if count == 0:
-            print("Seeding models...")
             seed_default_mock_models(db)
-            print(f"Count after seeding: {db.query(ProviderModel).count()}")
         yield db
     finally:
         db.close()
@@ -42,7 +39,6 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_db():
-    app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_db] = override_get_db
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -222,3 +218,42 @@ def test_list_recent_run_logs():
     logs_res = client.get("/api/providers/runs/recent")
     assert logs_res.status_code == 200
     assert len(logs_res.json()) >= 1
+
+def test_preflight_passes_for_enabled_mock_render():
+    payload = {
+        "provider_name": "mock",
+        "model_name": "mock-render",
+        "modality": "render"
+    }
+    res = client.post("/api/providers/preflight", json=payload)
+    assert res.status_code == 200
+    assert res.json()["ok"] is True
+
+def test_preflight_fails_for_render_missing_adapter():
+    payload = {
+        "provider_name": "custom",
+        "model_name": "custom-render",
+        "display_name": "Custom Render",
+        "modality": "render",
+        "cost_hint": "cheap"
+    }
+    # Create the model in the catalog
+    create_res = client.post("/api/providers/models", json=payload)
+    assert create_res.status_code == 200
+    
+    # Enable the model
+    model_id = create_res.json()["id"]
+    client.post(f"/api/providers/models/{model_id}/enable")
+    
+    # Preflight should fail because no 'custom' render adapter exists in registry
+    preflight_payload = {
+        "provider_name": "custom",
+        "model_name": "custom-render",
+        "modality": "render"
+    }
+    res = client.post("/api/providers/preflight", json=preflight_payload)
+    assert res.status_code == 200
+    
+    data = res.json()
+    assert data["ok"] is False
+    assert "registered adapter" in data["message"].lower()
