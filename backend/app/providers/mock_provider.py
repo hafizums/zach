@@ -3,7 +3,14 @@ from .base import LLMProvider, ImageProvider, VideoProvider, AudioProvider, Tran
 
 class MockLLMProvider(LLMProvider):
     def generate_text(self, prompt: str, schema: Optional[Dict] = None) -> Dict:
-        return {"result": "Mock generated text from LLM."}
+        return {
+            "hook": "This is a mock hook that grabs your attention.",
+            "script": "Here is the mock educational script body that explains the topic clearly and concisely without being too long. It is just the right length for a short video.",
+            "word_count": 35,
+            "estimated_duration_seconds": 30,
+            "payoff": "And that is the mock payoff.",
+            "keywords": ["mock", "educational"]
+        }
 
 class MockImageProvider(ImageProvider):
     def generate_image(self, prompt: str, aspect_ratio: str) -> ProviderJob:

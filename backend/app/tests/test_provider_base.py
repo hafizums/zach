@@ -9,7 +9,8 @@ from app.providers.mock_provider import (
 def test_mock_llm_provider():
     provider = MockLLMProvider()
     result = provider.generate_text("Test prompt")
-    assert "result" in result
+    assert "script" in result
+    assert "hook" in result
 
 def test_mock_image_provider():
     provider = MockImageProvider()

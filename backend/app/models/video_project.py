@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.core.database import Base
 from app.pipeline.pipeline_states import PipelineState
@@ -19,3 +20,5 @@ class VideoProject(Base):
     status = Column(String, default=PipelineState.DRAFT_CREATED.value)
     created_at = Column(DateTime(timezone=True), default=current_utc_time)
     updated_at = Column(DateTime(timezone=True), default=current_utc_time, onupdate=current_utc_time)
+
+    scripts = relationship("Script", back_populates="project", cascade="all, delete-orphan")

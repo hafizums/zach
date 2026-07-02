@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import health, projects
+from app.api import health, projects, scripts
 from app.core.storage import init_storage
 from app.core.database import Base, engine
 
@@ -23,3 +23,4 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+app.include_router(scripts.router, prefix="/api", tags=["scripts"])

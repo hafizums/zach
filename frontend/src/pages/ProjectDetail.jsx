@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { getProject, updateProject, deleteProject } from "../api/projects";
+import { getLatestScript } from "../api/scripts";
 
 const ProjectDetail = () => {
   const { projectId } = useParams();
@@ -10,6 +11,7 @@ const ProjectDetail = () => {
   const [error, setError] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
+  const [scriptStatus, setScriptStatus] = useState("Not generated");
 
   useEffect(() => {
     fetchProject();
@@ -21,6 +23,13 @@ const ProjectDetail = () => {
       const data = await getProject(projectId);
       setProject(data);
       setEditData(data);
+      
+      try {
+        const latestScript = await getLatestScript(projectId);
+        setScriptStatus(latestScript.status);
+      } catch (e) {
+        setScriptStatus("Not generated");
+      }
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Failed to load project");
     } finally {
@@ -150,6 +159,19 @@ const ProjectDetail = () => {
             <li>Updated: {new Date(project.updated_at).toLocaleString()}</li>
           </div>
         </ul>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800">Script</h3>
+          <p className="text-sm text-gray-500 mt-1">Status: <span className="font-medium text-gray-700">{scriptStatus}</span></p>
+        </div>
+        <Link 
+          to={`/projects/${projectId}/script`} 
+          className="px-4 py-2 bg-blue-600 text-white font-medium rounded hover:bg-blue-700"
+        >
+          {scriptStatus === "Not generated" ? "Generate Script" : "View/Edit Script"}
+        </Link>
       </div>
     </div>
   );
