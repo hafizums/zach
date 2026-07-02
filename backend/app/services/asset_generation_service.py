@@ -143,13 +143,18 @@ def _generate_wavespeed_image(
         except json.JSONDecodeError:
             pass
 
-    job = provider.generate_image(
-        prompt=prompt.prompt_text,
-        aspect_ratio=prompt.aspect_ratio or "9:16",
-        model_name=model_name,
-        negative_prompt=prompt.negative_prompt,
-        default_params=default_params,
-    )
+    try:
+        job = provider.generate_image(
+            prompt=prompt.prompt_text,
+            aspect_ratio=prompt.aspect_ratio or "9:16",
+            model_name=model_name,
+            negative_prompt=prompt.negative_prompt,
+            default_params=default_params,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"WaveSpeed generation failed: {str(e)}")
 
     result = job.result
     if not isinstance(result, dict):

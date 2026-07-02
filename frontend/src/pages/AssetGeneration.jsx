@@ -217,7 +217,7 @@ const AssetGeneration = () => {
                       {pair.image ? (
                         <>
                           <div className="aspect-[9/16] bg-gray-100 rounded overflow-hidden flex items-center justify-center">
-                            {pair.image.file_url.startsWith('data:image/svg+xml') ? (
+                            {(pair.image.file_url.startsWith('data:image/svg+xml') || pair.image.file_url.startsWith('http')) ? (
                               <img src={pair.image.file_url} alt={`Scene ${pair.scene_number} Preview`} className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-xs text-gray-400 break-all p-2">{pair.image.file_url}</span>

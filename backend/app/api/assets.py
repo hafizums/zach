@@ -40,7 +40,10 @@ def generate_project_images(
         if not pair or not pair.image_prompt or pair.image_prompt.status != "APPROVED":
             raise HTTPException(status_code=400, detail=f"Image prompt for scene {scene.scene_number} is not APPROVED.")
 
-    # Safe generation pass: generate → create → then deactivate old
+    # Phase 1: Generate and validate all image results before touching any records.
+    # If any scene fails, no GeneratedImage rows are written and no old images are
+    # deactivated.
+    pending: list[tuple] = []
     for scene in scenes:
         pair = prompt_service.list_scene_prompt_pair(db, scene.id)
         prompt_model = db.query(ImagePrompt).filter(ImagePrompt.id == pair.image_prompt.id).first()
@@ -49,6 +52,10 @@ def generate_project_images(
             provider_name=request.provider_name,
             model_name=request.model_name,
         )
+        pending.append((scene, img_in))
+
+    # Phase 2: All results are valid — write every record.
+    for scene, img_in in pending:
         asset_service.create_generated_image(db, img_in)
         asset_service.deactivate_scene_images(db, scene.id, keep_latest=True)
 

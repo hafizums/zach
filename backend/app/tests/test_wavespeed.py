@@ -474,9 +474,60 @@ def test_full_mock_pipeline_still_works():
 
     # Final render
     client.post(f"/api/projects/{project_id}/renders/generate")
+    client.post(f"/api/projects/{project_id}/renders/approve")
 
     proj = client.get(f"/api/projects/{project_id}").json()
     assert proj["status"] == "FINAL_RENDER_READY"
+
+
+# --- Test 16: Partial failure in project-wide generation preserves all original images ---
+def test_partial_failure_keeps_all_original_images():
+    _enable_wavespeed_model()
+    project_id = _setup_approved_prompts_setup("ws-partial-fail")
+
+    # First, generate with mock to get existing active images
+    client.post(f"/api/projects/{project_id}/assets/images/generate", json={})
+    before_assets = client.get(f"/api/projects/{project_id}/assets").json()
+    before_image_ids = [p["image"]["id"] for p in before_assets]
+    assert len(before_image_ids) == 8
+
+    # Create a mock that succeeds 4 times then fails
+    success_job = ProviderJob(
+        job_id="ws_ok",
+        status="COMPLETED",
+        result={
+            "provider_job_id": "ws_ok",
+            "file_url": "https://fake.wavespeed.ai/images/ok.png",
+            "thumbnail_url": "https://fake.wavespeed.ai/images/ok_thumb.png",
+            "width": 1080,
+            "height": 1920,
+            "status": "COMPLETED",
+            "raw_response": {},
+        },
+    )
+
+    call_count = [0]
+
+    def side_effect(prompt, aspect_ratio, model_name, negative_prompt=None, default_params=None):
+        call_count[0] += 1
+        if call_count[0] <= 4:
+            return success_job
+        raise Exception("Simulated WaveSpeed failure on scene 5")
+
+    with patch.dict(os.environ, {"WAVESPEED_API_KEY": FAKE_API_KEY}):
+        with patch.object(
+            WavespeedImageProvider, "generate_image", side_effect=side_effect
+        ):
+            res = client.post(
+                f"/api/projects/{project_id}/assets/images/generate",
+                json={"provider_name": "wavespeed", "model_name": "flux-schnell"},
+            )
+            assert res.status_code == 400
+
+    # All original active image IDs must remain unchanged
+    after_assets = client.get(f"/api/projects/{project_id}/assets").json()
+    after_image_ids = [p["image"]["id"] for p in after_assets]
+    assert sorted(after_image_ids) == sorted(before_image_ids)
 
 
 # --- Helpers ---
