@@ -219,6 +219,29 @@ const ProjectDetail = () => {
           Review Prompts
         </Link>
       </div>
+
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800">Assets</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {["DRAFT_CREATED", "TOPIC_ANALYZED", "RESEARCH_NOTES_READY", "SCRIPT_READY", "SCENE_PLAN_READY"].includes(project.status) 
+              ? "Approve prompts first"
+              : ["VIDEO_PROMPTS_READY", "IMAGES_GENERATED"].includes(project.status) 
+                ? "Ready to generate"
+                : "Assets approved"}
+          </p>
+        </div>
+        <Link 
+          to={`/projects/${projectId}/assets`} 
+          className={`px-4 py-2 font-medium rounded ${
+            ["DRAFT_CREATED", "TOPIC_ANALYZED", "RESEARCH_NOTES_READY", "SCRIPT_READY", "SCENE_PLAN_READY"].includes(project.status)
+              ? "bg-gray-200 text-gray-400 cursor-not-allowed pointer-events-none"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          Generate Assets
+        </Link>
+      </div>
     </div>
   );
 };

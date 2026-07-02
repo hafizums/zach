@@ -7,6 +7,7 @@ import ProjectDetail from "./pages/ProjectDetail";
 import ScriptReview from "./pages/ScriptReview";
 import ScenePlanner from "./pages/ScenePlanner";
 import PromptReview from "./pages/PromptReview";
+import AssetGeneration from "./pages/AssetGeneration";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/projects/:projectId/script" element={<ScriptReview />} />
         <Route path="/projects/:projectId/scenes" element={<ScenePlanner />} />
         <Route path="/projects/:projectId/prompts" element={<PromptReview />} />
+        <Route path="/projects/:projectId/assets" element={<AssetGeneration />} />
       </Routes>
     </AppShell>
   );

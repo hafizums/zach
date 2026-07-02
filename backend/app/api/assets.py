@@ -1,0 +1,138 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+
+from app.core.database import get_db
+from app.schemas.asset_schema import SceneAssetPairRead, GeneratedImageRead, GeneratedClipRead
+from app.services import asset_service, asset_generation_service, project_service, script_service, scene_service, prompt_service
+from app.models.prompt import ImagePrompt, VideoPrompt
+
+router = APIRouter()
+
+@router.post("/projects/{project_id}/assets/images/generate", response_model=List[SceneAssetPairRead])
+def generate_project_images(project_id: int, db: Session = Depends(get_db)):
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    scripts = script_service.list_project_scripts(db, project_id)
+    approved_script = next((s for s in scripts if s.status == "APPROVED"), None)
+    
+    # Needs VIDEO_PROMPTS_READY or above
+    valid_statuses = ["VIDEO_PROMPTS_READY", "IMAGES_GENERATED", "CLIPS_GENERATED", "VOICEOVER_READY", "SUBTITLES_READY", "FINAL_RENDER_READY"]
+    if project.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail="Cannot generate images before prompts are approved.")
+        
+    scenes = scene_service.list_script_scenes(db, approved_script.id)
+    
+    for scene in scenes:
+        pair = prompt_service.list_scene_prompt_pair(db, scene.id)
+        if pair and pair.image_prompt:
+            asset_service.deactivate_scene_images(db, scene.id)
+            # Create a model instance for the prompt to pass to service
+            prompt_model = db.query(ImagePrompt).filter(ImagePrompt.id == pair.image_prompt.id).first()
+            img_in = asset_generation_service.generate_mock_image(project, approved_script, scene, prompt_model)
+            asset_service.create_generated_image(db, img_in)
+            
+    # Optionally update state if it was only VIDEO_PROMPTS_READY
+    if project.status == "VIDEO_PROMPTS_READY":
+        project.status = "IMAGES_GENERATED"
+        db.add(project)
+        db.commit()
+        
+    return asset_service.list_project_assets(db, project_id)
+
+@router.post("/projects/{project_id}/assets/clips/generate", response_model=List[SceneAssetPairRead])
+def generate_project_clips(project_id: int, db: Session = Depends(get_db)):
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    scripts = script_service.list_project_scripts(db, project_id)
+    approved_script = next((s for s in scripts if s.status == "APPROVED"), None)
+    
+    scenes = scene_service.list_script_scenes(db, approved_script.id)
+    
+    for scene in scenes:
+        img = asset_service.get_active_image_for_scene(db, scene.id)
+        if not img:
+            raise HTTPException(status_code=400, detail=f"Cannot generate clip for scene {scene.scene_number} because it has no active image.")
+            
+        pair = prompt_service.list_scene_prompt_pair(db, scene.id)
+        if pair and pair.video_prompt:
+            asset_service.deactivate_scene_clips(db, scene.id)
+            prompt_model = db.query(VideoPrompt).filter(VideoPrompt.id == pair.video_prompt.id).first()
+            clip_in = asset_generation_service.generate_mock_clip(project, approved_script, scene, prompt_model, img)
+            asset_service.create_generated_clip(db, clip_in)
+            
+    return asset_service.list_project_assets(db, project_id)
+
+@router.post("/scenes/{scene_id}/assets/image/retry", response_model=SceneAssetPairRead)
+def retry_scene_image(scene_id: int, db: Session = Depends(get_db)):
+    scene = scene_service.get_scene(db, scene_id)
+    if not scene:
+        raise HTTPException(status_code=404, detail="Scene not found")
+        
+    project = project_service.get_project(db, scene.project_id)
+    script = script_service.get_script(db, scene.script_id)
+    
+    pair = prompt_service.list_scene_prompt_pair(db, scene.id)
+    if not pair or not pair.image_prompt:
+        raise HTTPException(status_code=400, detail="Missing image prompt")
+        
+    asset_service.deactivate_scene_images(db, scene.id)
+    prompt_model = db.query(ImagePrompt).filter(ImagePrompt.id == pair.image_prompt.id).first()
+    img_in = asset_generation_service.generate_mock_image(project, script, scene, prompt_model)
+    asset_service.create_generated_image(db, img_in)
+    
+    return asset_service.list_scene_assets(db, scene.id)
+
+@router.post("/scenes/{scene_id}/assets/clip/retry", response_model=SceneAssetPairRead)
+def retry_scene_clip(scene_id: int, db: Session = Depends(get_db)):
+    scene = scene_service.get_scene(db, scene_id)
+    if not scene:
+        raise HTTPException(status_code=404, detail="Scene not found")
+        
+    img = asset_service.get_active_image_for_scene(db, scene.id)
+    if not img:
+        raise HTTPException(status_code=400, detail="Cannot generate clip without active image")
+        
+    project = project_service.get_project(db, scene.project_id)
+    script = script_service.get_script(db, scene.script_id)
+    
+    pair = prompt_service.list_scene_prompt_pair(db, scene.id)
+    if not pair or not pair.video_prompt:
+        raise HTTPException(status_code=400, detail="Missing video prompt")
+        
+    asset_service.deactivate_scene_clips(db, scene.id)
+    prompt_model = db.query(VideoPrompt).filter(VideoPrompt.id == pair.video_prompt.id).first()
+    clip_in = asset_generation_service.generate_mock_clip(project, script, scene, prompt_model, img)
+    asset_service.create_generated_clip(db, clip_in)
+    
+    return asset_service.list_scene_assets(db, scene.id)
+
+@router.get("/projects/{project_id}/assets", response_model=List[SceneAssetPairRead])
+def list_project_assets(project_id: int, db: Session = Depends(get_db)):
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return asset_service.list_project_assets(db, project_id)
+
+@router.get("/scenes/{scene_id}/assets", response_model=SceneAssetPairRead)
+def list_scene_assets(scene_id: int, db: Session = Depends(get_db)):
+    assets = asset_service.list_scene_assets(db, scene_id)
+    if not assets:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    return assets
+
+@router.post("/projects/{project_id}/assets/approve")
+def approve_assets(project_id: int, db: Session = Depends(get_db)):
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    success = asset_service.approve_project_assets(db, project_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to approve assets. Ensure assets exist.")
+        
+    return {"status": "success", "message": "Assets approved"}
