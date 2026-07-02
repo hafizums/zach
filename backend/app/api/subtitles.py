@@ -102,9 +102,16 @@ def generate_project_subtitles(
         model_name=request.model_name,
     )
 
-    # Now that segments are validated, replace old with new
-    subtitle_service.delete_project_subtitles_for_voiceover(db, project_id, voiceover.id)
-    segments = subtitle_service.bulk_create_subtitle_segments(db, segments_in)
+    # Atomically replace old subtitles with new — old subtitles survive if anything fails
+    try:
+        segments = subtitle_service.replace_subtitle_segments_for_voiceover(
+            db, project_id, voiceover.id, segments_in
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to save subtitles: {str(e)}",
+        )
 
     return segments
 

@@ -651,7 +651,84 @@ def test_empty_segments_response_keeps_existing_subtitles():
 
 
 # ---------------------------------------------------------------------------
-# Test 22 — Full mock pipeline still reaches FINAL_RENDER_READY
+# Test 22 — Failed DB subtitle replacement preserves existing subtitles
+# ---------------------------------------------------------------------------
+
+def test_failed_db_replace_preserves_existing_subtitles():
+    """If the DB replace step fails after successful provider generation,
+    existing subtitles must remain intact."""
+    project_id = _setup_to_voiceover_ready()
+
+    # Step 1: Generate mock subtitles as baseline
+    res1 = client.post(f"/api/projects/{project_id}/subtitles/generate", json={
+        "provider_name": "mock",
+        "model_name": "mock-transcription",
+    })
+    assert res1.status_code == 200
+    original_segments = res1.json()
+    original_count = len(original_segments)
+    original_ids = [s["id"] for s in original_segments]
+    original_texts = [s["text"] for s in original_segments]
+    assert original_count > 0
+
+    # Step 2: Enable OpenAI, mock provider to succeed, but patch the
+    # replacement helper to simulate a DB failure during the write phase.
+    _enable_openai_transcription()
+    from app.providers import openai_provider as _oai_mod
+    from app.providers.base import ProviderJob
+    from app.services import subtitle_service as _sub_svc
+
+    mock_job = ProviderJob(
+        job_id="tr_db_fail_test",
+        status="COMPLETED",
+        result={
+            "provider_job_id": "tr_db_fail_test",
+            "text": "Full text.",
+            "segments": [
+                {"start": 0.0, "end": 2.0, "text": "New segment one."},
+                {"start": 2.0, "end": 4.0, "text": "New segment two."},
+            ],
+            "duration_seconds": 4.0,
+            "status": "COMPLETED",
+            "raw_response": {},
+        },
+    )
+
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test-key"}):
+        with patch.object(Path, "exists", return_value=True):
+            with patch.object(
+                _oai_mod.OpenAITranscriptionProvider, "transcribe_audio", return_value=mock_job
+            ):
+                with patch.object(
+                    _sub_svc,
+                    "replace_subtitle_segments_for_voiceover",
+                    side_effect=Exception("Simulated DB write failure"),
+                ):
+                    res2 = client.post(f"/api/projects/{project_id}/subtitles/generate", json={
+                        "provider_name": "openai",
+                        "model_name": "whisper-1",
+                        "confirmed": True,
+                    })
+
+    # Step 3: Assert the request returned an error
+    assert res2.status_code == 400
+    assert "DB write failure" in res2.json()["detail"]
+
+    # Step 4: Assert original subtitles still exist with same data
+    remaining = client.get(f"/api/projects/{project_id}/subtitles").json()
+    assert len(remaining) == original_count
+    remaining_ids = [s["id"] for s in remaining]
+    remaining_texts = [s["text"] for s in remaining]
+    assert remaining_ids == original_ids
+    assert remaining_texts == original_texts
+
+    # Step 5: Project status did not regress
+    proj = client.get(f"/api/projects/{project_id}").json()
+    assert proj["status"] in ("VOICEOVER_READY", "SUBTITLES_READY", "FINAL_RENDER_READY")
+
+
+# ---------------------------------------------------------------------------
+# Test 23 — Full mock pipeline still reaches FINAL_RENDER_READY
 # ---------------------------------------------------------------------------
 
 def test_full_mock_pipeline_reaches_final_render_ready():
@@ -696,7 +773,7 @@ def test_full_mock_pipeline_reaches_final_render_ready():
 
 
 # ---------------------------------------------------------------------------
-# Test 23 — Existing Phase 1–14 tests compatibility checks
+# Test 24 — Existing Phase 1–14 tests compatibility checks
 # ---------------------------------------------------------------------------
 
 def test_existing_subtitle_generation_still_works():

@@ -47,6 +47,53 @@ def delete_project_subtitles_for_voiceover(db: Session, project_id: int, voiceov
     if segments:
         db.commit()
 
+
+def replace_subtitle_segments_for_voiceover(
+    db: Session,
+    project_id: int,
+    voiceover_id: int,
+    segments_in: List[SubtitleSegmentCreate],
+) -> List[SubtitleSegment]:
+    """
+    Atomically replace all subtitle segments for a project+voiceover.
+
+    1. Read existing rows.
+    2. Create new rows, flush to assign IDs.
+    3. Delete old rows only after new rows flushed successfully.
+    4. Commit once.
+    5. On any failure before commit, rollback — old subtitles remain intact.
+    """
+    old_segments = (
+        db.query(SubtitleSegment)
+        .filter(
+            SubtitleSegment.project_id == project_id,
+            SubtitleSegment.voiceover_id == voiceover_id,
+        )
+        .all()
+    )
+
+    new_segments = [SubtitleSegment(**s.model_dump()) for s in segments_in]
+
+    try:
+        db.add_all(new_segments)
+        db.flush()  # assign IDs without committing
+
+        new_ids = {s.id for s in new_segments}
+
+        for old in old_segments:
+            if old.id not in new_ids:
+                db.delete(old)
+
+        db.commit()
+
+        for s in new_segments:
+            db.refresh(s)
+
+        return new_segments
+    except Exception:
+        db.rollback()
+        raise
+
 def approve_project_subtitles(db: Session, project_id: int, voiceover_id: int) -> bool:
     segments = list_voiceover_subtitle_segments(db, voiceover_id)
     if not segments:
