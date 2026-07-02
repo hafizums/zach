@@ -173,6 +173,29 @@ const ProjectDetail = () => {
           {scriptStatus === "Not generated" ? "Generate Script" : "View/Edit Script"}
         </Link>
       </div>
+
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-800">Scene Plan</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {["DRAFT_CREATED", "TOPIC_ANALYZED", "RESEARCH_NOTES_READY"].includes(project.status) 
+              ? "Approve a script first"
+              : project.status === "SCRIPT_READY" 
+                ? "Ready to plan"
+                : "Plan approved"}
+          </p>
+        </div>
+        <Link 
+          to={`/projects/${projectId}/scenes`} 
+          className={`px-4 py-2 font-medium rounded ${
+            ["DRAFT_CREATED", "TOPIC_ANALYZED", "RESEARCH_NOTES_READY"].includes(project.status)
+              ? "bg-gray-200 text-gray-400 cursor-not-allowed pointer-events-none"
+              : "bg-blue-600 text-white hover:bg-blue-700"
+          }`}
+        >
+          Open Scene Planner
+        </Link>
+      </div>
     </div>
   );
 };

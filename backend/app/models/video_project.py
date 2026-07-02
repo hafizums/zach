@@ -22,3 +22,4 @@ class VideoProject(Base):
     updated_at = Column(DateTime(timezone=True), default=current_utc_time, onupdate=current_utc_time)
 
     scripts = relationship("Script", back_populates="project", cascade="all, delete-orphan")
+    scenes = relationship("Scene", back_populates="project", cascade="all, delete-orphan")

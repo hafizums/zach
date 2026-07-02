@@ -18,3 +18,4 @@ class Script(Base):
     created_at = Column(DateTime(timezone=True), default=current_utc_time)
 
     project = relationship("VideoProject", back_populates="scripts")
+    scenes = relationship("Scene", back_populates="script", cascade="all, delete-orphan")
