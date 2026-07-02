@@ -6,8 +6,10 @@ from app.models.video_project import VideoProject
 from app.schemas.asset_schema import GeneratedImageCreate, GeneratedClipCreate, SceneAssetPairRead
 from app.pipeline.pipeline_states import PipelineState
 
-def deactivate_scene_images(db: Session, scene_id: int) -> None:
-    images = db.query(GeneratedImage).filter(GeneratedImage.scene_id == scene_id, GeneratedImage.is_active == True).all()
+def deactivate_scene_images(db: Session, scene_id: int, keep_latest: bool = False) -> None:
+    images = db.query(GeneratedImage).filter(GeneratedImage.scene_id == scene_id, GeneratedImage.is_active == True).order_by(GeneratedImage.id.desc()).all()
+    if keep_latest and images:
+        images = images[1:]
     for img in images:
         img.is_active = False
         db.add(img)

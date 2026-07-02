@@ -47,6 +47,17 @@ def preflight_provider_model(db: Session, provider_name: str, model_name: str, m
                 message="OPENAI_API_KEY is not configured"
             )
 
+    # 5. Special handling for wavespeed api key
+    if provider_name == "wavespeed" and modality == "image":
+        if not os.getenv("WAVESPEED_API_KEY"):
+            return ProviderPreflightResult(
+                ok=False,
+                provider_name=provider_name,
+                model_name=model_name,
+                modality=modality,
+                message="WAVESPEED_API_KEY is not configured"
+            )
+
     return ProviderPreflightResult(
         ok=True,
         provider_name=provider_name,

@@ -15,6 +15,21 @@ def seed_default_mock_models(db: Session) -> None:
     
     import os
     import json
+
+    wavespeed_default_model = os.getenv("WAVESPEED_DEFAULT_IMAGE_MODEL", "flux-schnell")
+    wavespeed_seed = {
+        "provider_name": "wavespeed",
+        "model_name": wavespeed_default_model,
+        "display_name": "WaveSpeed Image",
+        "modality": "image",
+        "is_enabled": False,
+        "is_mock": False,
+        "supports_aspect_ratio": "9:16,16:9,1:1",
+        "cost_hint": "paid",
+        "default_params_json": json.dumps({"num_inference_steps": 4, "guidance_scale": 0.0}),
+    }
+    defaults.append(wavespeed_seed)
+
     openai_default_model = os.getenv("OPENAI_DEFAULT_LLM_MODEL", "gpt-4o-mini")
     openai_seed = {
         "provider_name": "openai",

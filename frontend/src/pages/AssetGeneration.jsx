@@ -2,16 +2,21 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getProject } from "../api/projects";
 import { listProjectAssets, generateProjectImages, generateProjectClips, retrySceneImage, retrySceneClip, approveAssets } from "../api/assets";
+import { listEnabledProviderModels } from "../api/providers";
 
 const AssetGeneration = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  
+
   const [project, setProject] = useState(null);
   const [assetPairs, setAssetPairs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
+
+  const [imageModels, setImageModels] = useState([]);
+  const [selectedImageProvider, setSelectedImageProvider] = useState("mock");
+  const [selectedImageModel, setSelectedImageModel] = useState("mock-image");
 
   useEffect(() => {
     fetchData();
@@ -22,9 +27,17 @@ const AssetGeneration = () => {
       setLoading(true);
       const proj = await getProject(projectId);
       setProject(proj);
-      
+
       const loadedPairs = await listProjectAssets(projectId);
       setAssetPairs(loadedPairs);
+
+      const allEnabled = await listEnabledProviderModels();
+      const images = allEnabled.filter(m => m.modality === "image");
+      setImageModels(images);
+      if (images.length > 0) {
+        setSelectedImageProvider(images[0].provider_name);
+        setSelectedImageModel(images[0].model_name);
+      }
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to load asset data");
     } finally {
@@ -36,7 +49,7 @@ const AssetGeneration = () => {
     try {
       setGenerating(true);
       setError(null);
-      const newPairs = await generateProjectImages(projectId);
+      const newPairs = await generateProjectImages(projectId, selectedImageProvider, selectedImageModel);
       setAssetPairs(newPairs);
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to generate images");
@@ -61,7 +74,7 @@ const AssetGeneration = () => {
   const handleRetryImage = async (sceneId) => {
     try {
       setGenerating(true);
-      const updatedPair = await retrySceneImage(sceneId);
+      const updatedPair = await retrySceneImage(sceneId, selectedImageProvider, selectedImageModel);
       setAssetPairs(prev => prev.map(p => p.scene_id === sceneId ? updatedPair : p));
     } catch (err) {
       alert("Failed to retry image");
@@ -135,13 +148,31 @@ const AssetGeneration = () => {
               <span className="font-semibold text-gray-800">{assetPairs.length} Scene Assets</span>
             </div>
             <div className="space-x-3 flex flex-wrap gap-2">
-              <button 
-                onClick={handleGenerateImages} 
-                disabled={generating || assetsApproved}
-                className="px-4 py-2 bg-blue-100 text-blue-700 font-medium rounded hover:bg-blue-200 disabled:opacity-50"
-              >
-                {hasImages ? "Regenerate Images" : "Generate Images"}
-              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={`${selectedImageProvider}:${selectedImageModel}`}
+                  onChange={(e) => {
+                    const [provider, model] = e.target.value.split(":");
+                    setSelectedImageProvider(provider);
+                    setSelectedImageModel(model);
+                  }}
+                  className="text-sm border border-gray-300 rounded px-2 py-1.5 bg-white"
+                  disabled={generating}
+                >
+                  {imageModels.map(m => (
+                    <option key={`${m.provider_name}:${m.model_name}`} value={`${m.provider_name}:${m.model_name}`}>
+                      {m.display_name} ({m.cost_hint || "free"})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleGenerateImages}
+                  disabled={generating || assetsApproved}
+                  className="px-4 py-2 bg-blue-100 text-blue-700 font-medium rounded hover:bg-blue-200 disabled:opacity-50"
+                >
+                  {hasImages ? "Regenerate Images" : "Generate Images"}
+                </button>
+              </div>
               
               <button 
                 onClick={handleGenerateClips} 
@@ -192,6 +223,13 @@ const AssetGeneration = () => {
                               <span className="text-xs text-gray-400 break-all p-2">{pair.image.file_url}</span>
                             )}
                           </div>
+                          {pair.image.provider_name && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
+                                {pair.image.provider_name}/{pair.image.model_name}
+                              </span>
+                            </div>
+                          )}
                           {!assetsApproved && (
                             <button onClick={() => handleRetryImage(pair.scene_id)} disabled={generating} className="w-full text-xs py-1.5 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50">
                               Retry Image

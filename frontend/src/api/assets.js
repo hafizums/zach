@@ -1,7 +1,10 @@
 import apiClient from "./client";
 
-export const generateProjectImages = async (projectId) => {
-  const response = await apiClient.post(`/api/projects/${projectId}/assets/images/generate`, {});
+export const generateProjectImages = async (projectId, providerName = "mock", modelName = "mock-image") => {
+  const response = await apiClient.post(`/api/projects/${projectId}/assets/images/generate`, {
+    provider_name: providerName,
+    model_name: modelName,
+  });
   return response.data;
 };
 
@@ -10,8 +13,11 @@ export const generateProjectClips = async (projectId) => {
   return response.data;
 };
 
-export const retrySceneImage = async (sceneId) => {
-  const response = await apiClient.post(`/api/scenes/${sceneId}/assets/image/retry`, {});
+export const retrySceneImage = async (sceneId, providerName = "mock", modelName = "mock-image") => {
+  const response = await apiClient.post(`/api/scenes/${sceneId}/assets/image/retry`, {
+    provider_name: providerName,
+    model_name: modelName,
+  });
   return response.data;
 };
 

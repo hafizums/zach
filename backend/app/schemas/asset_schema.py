@@ -15,6 +15,8 @@ class GeneratedImageCreate(GeneratedImageBase):
     script_id: int
     scene_id: int
     image_prompt_id: int
+    provider_name: Optional[str] = None
+    model_name: Optional[str] = None
     provider_job_id: Optional[str] = None
 
 class GeneratedImageRead(GeneratedImageBase):
@@ -23,6 +25,8 @@ class GeneratedImageRead(GeneratedImageBase):
     script_id: int
     scene_id: int
     image_prompt_id: int
+    provider_name: Optional[str] = None
+    model_name: Optional[str] = None
     provider_job_id: Optional[str] = None
     quality_score: Optional[int] = None
     created_at: datetime

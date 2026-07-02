@@ -69,3 +69,8 @@ class ProviderPreflightResult(BaseModel):
 class GenerationRequest(BaseModel):
     provider_name: str = "mock"
     model_name: str = "mock-llm"
+
+
+class ImageGenerationRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-image"
