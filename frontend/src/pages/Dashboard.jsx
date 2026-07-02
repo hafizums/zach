@@ -1,63 +1,92 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import apiClient from "../api/client";
+import { listProjects } from "../api/projects";
 
 const Dashboard = () => {
   const [healthData, setHealthData] = useState(null);
-  const [error, setError] = useState(null);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchHealth = async () => {
+    const fetchDashboardData = async () => {
       try {
-        const response = await apiClient.get("/api/health");
-        setHealthData(response.data);
+        const healthRes = await apiClient.get("/api/health");
+        setHealthData(healthRes.data);
+        
+        const projRes = await listProjects();
+        setProjects(projRes);
       } catch (err) {
-        setError(err.message || "Failed to fetch health check");
+        console.error("Dashboard error:", err);
       } finally {
         setLoading(false);
       }
     };
     
-    fetchHealth();
+    fetchDashboardData();
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Dashboard</h2>
-      
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold mb-4 text-gray-700">System Status</h3>
+    <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-6">
+      <div className="w-full md:w-3/4 order-2 md:order-1">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Projects</h2>
+          <Link 
+            to="/projects/new" 
+            className="px-4 py-2 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 transition"
+          >
+            Create Project
+          </Link>
+        </div>
         
-        {loading && <p className="text-gray-500">Checking system health...</p>}
-        
-        {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded border border-red-200">
-            <strong>Error: </strong> {error}
+        {loading ? (
+          <p className="text-gray-500">Loading projects...</p>
+        ) : projects.length === 0 ? (
+          <div className="bg-white p-8 text-center rounded-lg border border-gray-100 shadow-sm">
+            <h3 className="text-lg font-medium text-gray-700 mb-2">No projects yet</h3>
+            <p className="text-gray-500 mb-4">Get started by creating your first explainer short project.</p>
+            <Link to="/projects/new" className="text-blue-600 font-medium hover:underline">Create one now &rarr;</Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {projects.map((proj) => (
+              <Link key={proj.id} to={`/projects/${proj.id}`} className="block bg-white p-5 rounded-lg border border-gray-100 shadow-sm hover:shadow-md transition">
+                <h3 className="text-lg font-semibold text-gray-800 mb-1 truncate">{proj.title}</h3>
+                <p className="text-sm text-gray-500 mb-3 truncate">{proj.topic}</p>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full font-medium">{proj.status}</span>
+                  <span className="text-gray-400">{new Date(proj.updated_at).toLocaleDateString()}</span>
+                </div>
+              </Link>
+            ))}
           </div>
         )}
-        
-        {healthData && (
-          <ul className="space-y-3">
-            <li className="flex justify-between border-b pb-2">
-              <span className="font-medium text-gray-600">App Name</span>
-              <span className="text-gray-900">{healthData.app_name}</span>
-            </li>
-            <li className="flex justify-between border-b pb-2">
-              <span className="font-medium text-gray-600">Environment</span>
-              <span className="text-gray-900 capitalize">{healthData.environment}</span>
-            </li>
-            <li className="flex justify-between border-b pb-2">
-              <span className="font-medium text-gray-600">API Status</span>
-              <span className="text-green-600 font-semibold uppercase">{healthData.status}</span>
-            </li>
-            <li className="flex justify-between">
-              <span className="font-medium text-gray-600">Storage Initialized</span>
-              <span className={healthData.storage_path_exists ? "text-green-600" : "text-red-600"}>
-                {healthData.storage_path_exists ? "Yes" : "No"}
-              </span>
-            </li>
-          </ul>
-        )}
+      </div>
+
+      <div className="w-full md:w-1/4 order-1 md:order-2">
+        <div className="bg-white p-5 rounded-lg shadow-sm border border-gray-100 sticky top-6">
+          <h3 className="text-sm font-semibold mb-3 text-gray-700 uppercase tracking-wider">System Status</h3>
+          {healthData ? (
+            <ul className="space-y-2 text-sm">
+              <li className="flex justify-between border-b pb-1">
+                <span className="text-gray-500">API</span>
+                <span className="text-green-600 font-medium">{healthData.status}</span>
+              </li>
+              <li className="flex justify-between border-b pb-1">
+                <span className="text-gray-500">Env</span>
+                <span className="text-gray-800 capitalize">{healthData.environment}</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-gray-500">Storage</span>
+                <span className={healthData.storage_path_exists ? "text-green-600" : "text-red-600"}>
+                  {healthData.storage_path_exists ? "OK" : "Error"}
+                </span>
+              </li>
+            </ul>
+          ) : (
+            <p className="text-xs text-gray-400">Loading system status...</p>
+          )}
+        </div>
       </div>
     </div>
   );
