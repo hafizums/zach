@@ -70,6 +70,19 @@ def seed_default_mock_models(db: Session) -> None:
         "default_params_json": json.dumps({"voice": "alloy", "format": "mp3"}),
     }
     defaults.append(openai_tts_seed)
+
+    openai_default_transcription_model = os.getenv("OPENAI_DEFAULT_TRANSCRIPTION_MODEL", "whisper-1")
+    openai_transcription_seed = {
+        "provider_name": "openai",
+        "model_name": openai_default_transcription_model,
+        "display_name": "OpenAI Whisper Transcription",
+        "modality": "transcription",
+        "is_enabled": False,
+        "is_mock": False,
+        "cost_hint": "paid",
+        "default_params_json": json.dumps({"response_format": "verbose_json", "timestamp_granularities": ["segment"]}),
+    }
+    defaults.append(openai_transcription_seed)
     
     for default in defaults:
         existing = db.query(ProviderModel).filter(

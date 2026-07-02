@@ -34,3 +34,27 @@ class MockAudioProvider(AudioProvider):
 class MockTranscriptionProvider(TranscriptionProvider):
     def transcribe(self, audio_path: str) -> Dict:
         return {"subtitles": "Mock subtitles text"}
+
+    def transcribe_audio(
+        self,
+        audio_file_path: str,
+        model_name: str = "whisper-1",
+        language: str | None = None,
+        response_format: str = "verbose_json",
+        timestamp_granularities: list[str] | None = None,
+    ) -> ProviderJob:
+        return ProviderJob(
+            job_id="tr_mock_123",
+            status="COMPLETED",
+            result={
+                "provider_job_id": "tr_mock_123",
+                "text": "Mock transcription text",
+                "segments": [
+                    {"start": 0.0, "end": 3.5, "text": "Mock subtitle segment one."},
+                    {"start": 3.5, "end": 7.0, "text": "Mock subtitle segment two."},
+                ],
+                "duration_seconds": 7.0,
+                "status": "COMPLETED",
+                "raw_response": {},
+            },
+        )

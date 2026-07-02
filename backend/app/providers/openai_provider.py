@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Optional
 from openai import OpenAI
 from fastapi import HTTPException
-from .base import LLMProvider, AudioProvider, ProviderJob
+from .base import LLMProvider, AudioProvider, TranscriptionProvider, ProviderJob
 
 STORAGE_DIR = Path("storage")
 
@@ -122,5 +122,96 @@ class OpenAITTSProvider(AudioProvider):
                 "status": "COMPLETED",
                 "raw_response": {"model": model_name, "voice": voice},
                 "_audio_bytes": response.content,  # internal, not serialized to JSON
+            },
+        )
+
+
+class OpenAITranscriptionProvider(TranscriptionProvider):
+    """Real subtitle timing via OpenAI Whisper transcription."""
+
+    def __init__(self):
+        self.client = None
+
+    def _get_client(self) -> OpenAI:
+        if self.client is None:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise HTTPException(status_code=400, detail="OPENAI_API_KEY is not configured")
+            self.client = OpenAI(api_key=api_key)
+        return self.client
+
+    def transcribe(self, audio_path: str) -> Dict:
+        """Legacy interface — delegates to transcribe_audio."""
+        job = self.transcribe_audio(audio_file_path=audio_path)
+        result = job.result or {}
+        return {
+            "subtitles": result.get("text", ""),
+            "segments": result.get("segments", []),
+        }
+
+    def transcribe_audio(
+        self,
+        audio_file_path: str,
+        model_name: str = "whisper-1",
+        language: str | None = None,
+        response_format: str = "verbose_json",
+        timestamp_granularities: list[str] | None = None,
+    ) -> ProviderJob:
+        """Transcribe audio using OpenAI Whisper with word-level timestamps."""
+        client = self._get_client()
+
+        if timestamp_granularities is None:
+            timestamp_granularities = ["segment"]
+
+        try:
+            with open(audio_file_path, "rb") as audio_file:
+                kwargs = dict(
+                    model=model_name,
+                    file=audio_file,
+                    response_format=response_format,
+                )
+                if language:
+                    kwargs["language"] = language
+                if response_format == "verbose_json" and timestamp_granularities:
+                    kwargs["timestamp_granularities"] = timestamp_granularities
+
+                response = client.audio.transcriptions.create(**kwargs)
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Audio file not found for transcription: {audio_file_path}",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"OpenAI transcription failed: {str(e)}",
+            )
+
+        # Normalize response
+        job_id = f"tr_{uuid.uuid4().hex[:12]}"
+        raw_dict = response.model_dump() if hasattr(response, "model_dump") else {}
+
+        segments_raw = raw_dict.get("segments", [])
+        segments = [
+            {
+                "start": float(seg.get("start", 0)),
+                "end": float(seg.get("end", 0)),
+                "text": (seg.get("text", "") or "").strip(),
+            }
+            for seg in segments_raw
+        ]
+        # Filter out empty segments
+        segments = [s for s in segments if s["text"]]
+
+        return ProviderJob(
+            job_id=job_id,
+            status="COMPLETED",
+            result={
+                "provider_job_id": job_id,
+                "text": raw_dict.get("text", ""),
+                "segments": segments,
+                "duration_seconds": float(raw_dict.get("duration", 0)),
+                "status": "COMPLETED",
+                "raw_response": raw_dict,
             },
         )

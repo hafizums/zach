@@ -1,7 +1,19 @@
 import client from './client';
 
-export const generateSubtitles = async (projectId) => {
-    const res = await client.post(`/api/projects/${projectId}/subtitles/generate`);
+export const estimateSubtitles = async (projectId, providerName = 'mock', modelName = 'mock-transcription') => {
+    const res = await client.post(`/api/projects/${projectId}/subtitles/estimate`, {
+        provider_name: providerName,
+        model_name: modelName,
+    });
+    return res.data;
+};
+
+export const generateSubtitles = async (projectId, providerName = 'mock', modelName = 'mock-transcription', confirmed = false) => {
+    const res = await client.post(`/api/projects/${projectId}/subtitles/generate`, {
+        provider_name: providerName,
+        model_name: modelName,
+        confirmed,
+    });
     return res.data;
 };
 

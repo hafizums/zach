@@ -35,3 +35,14 @@ class TranscriptionProvider(ABC):
     @abstractmethod
     def transcribe(self, audio_path: str) -> Dict:
         pass
+
+    @abstractmethod
+    def transcribe_audio(
+        self,
+        audio_file_path: str,
+        model_name: str = "whisper-1",
+        language: str | None = None,
+        response_format: str = "verbose_json",
+        timestamp_granularities: list[str] | None = None,
+    ) -> ProviderJob:
+        pass

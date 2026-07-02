@@ -144,3 +144,27 @@ class VoiceoverGenerationEstimateResponse(BaseModel):
     cost_hint: str = "mock-free"
     requires_confirmation: bool = False
     message: str = ""
+
+
+class SubtitleGenerationRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-transcription"
+    confirmed: bool = False
+
+
+class SubtitleGenerationEstimateRequest(BaseModel):
+    provider_name: str = "mock"
+    model_name: str = "mock-transcription"
+
+
+class SubtitleGenerationEstimateResponse(BaseModel):
+    ok: bool
+    provider_name: str
+    model_name: str
+    modality: str = "transcription"
+    voiceover_id: Optional[int] = None
+    audio_file_url: Optional[str] = None
+    estimated_jobs: int = 0
+    cost_hint: str = "mock-free"
+    requires_confirmation: bool = False
+    message: str = ""

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getProject } from '../api/projects';
 import { estimateVoiceover, generateVoiceover, getActiveVoiceover } from '../api/audio';
-import { generateSubtitles, listProjectSubtitles, updateSubtitleSegment, approveSubtitles } from '../api/subtitles';
+import { estimateSubtitles, generateSubtitles, listProjectSubtitles, updateSubtitleSegment, approveSubtitles } from '../api/subtitles';
 import { listEnabledProviderModels } from '../api/providers';
 
 const AudioSubtitles = () => {
@@ -20,11 +20,16 @@ const AudioSubtitles = () => {
   const [savingSubtitles, setSavingSubtitles] = useState({});
   const [approving, setApproving] = useState(false);
 
-  // Provider selection state
+  // Voiceover provider selection state
   const [audioModels, setAudioModels] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState('mock');
   const [selectedModel, setSelectedModel] = useState('mock-audio');
   const [selectedVoice, setSelectedVoice] = useState(null);
+
+  // Transcription provider selection state
+  const [transcriptionModels, setTranscriptionModels] = useState([]);
+  const [selectedTransProvider, setSelectedTransProvider] = useState('mock');
+  const [selectedTransModel, setSelectedTransModel] = useState('mock-transcription');
 
   // Confirmation modal state
   const [confirmModal, setConfirmModal] = useState(null);
@@ -39,7 +44,7 @@ const AudioSubtitles = () => {
       const projData = await getProject(projectId);
       setProject(projData);
 
-      // Load enabled audio models for provider dropdown
+      // Load enabled provider models
       try {
         const allEnabled = await listEnabledProviderModels();
         const audioMods = allEnabled.filter(m => m.modality === 'audio');
@@ -47,6 +52,13 @@ const AudioSubtitles = () => {
         if (audioMods.length > 0) {
           setSelectedProvider(audioMods[0].provider_name);
           setSelectedModel(audioMods[0].model_name);
+        }
+
+        const transMods = allEnabled.filter(m => m.modality === 'transcription');
+        setTranscriptionModels(transMods);
+        if (transMods.length > 0) {
+          setSelectedTransProvider(transMods[0].provider_name);
+          setSelectedTransModel(transMods[0].model_name);
         }
       } catch (_) {
         // Provider models endpoint may not be available; ignore
@@ -87,6 +99,7 @@ const AudioSubtitles = () => {
 
       if (estimate.requires_confirmation) {
         setConfirmModal({
+          type: 'voiceover',
           estimate,
           onConfirm: async () => {
             setConfirmModal(null);
@@ -130,7 +143,43 @@ const AudioSubtitles = () => {
     try {
       setGeneratingSubtitles(true);
       setError(null);
-      const subsData = await generateSubtitles(projectId);
+
+      // Estimate first
+      const estimate = await estimateSubtitles(projectId, selectedTransProvider, selectedTransModel);
+
+      if (!estimate.ok) {
+        setError(estimate.message || 'Subtitle generation is not available.');
+        setGeneratingSubtitles(false);
+        return;
+      }
+
+      if (estimate.requires_confirmation) {
+        setConfirmModal({
+          type: 'subtitles',
+          estimate,
+          onConfirm: async () => {
+            setConfirmModal(null);
+            await doGenerateSubtitles();
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+        setGeneratingSubtitles(false);
+        return;
+      }
+
+      // Mock/free: generate directly
+      await doGenerateSubtitles();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to estimate subtitle generation');
+      setGeneratingSubtitles(false);
+    }
+  };
+
+  const doGenerateSubtitles = async () => {
+    try {
+      setGeneratingSubtitles(true);
+      setError(null);
+      const subsData = await generateSubtitles(projectId, selectedTransProvider, selectedTransModel, true);
       setSubtitles(subsData);
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to generate subtitles');
@@ -179,6 +228,9 @@ const AudioSubtitles = () => {
     }
   };
 
+  const isVoiceoverConfirm = confirmModal?.type === 'voiceover';
+  const isSubtitleConfirm = confirmModal?.type === 'subtitles';
+
   if (loading) return <div className="p-8">Loading Audio & Subtitles...</div>;
   if (!project) return <div className="p-8 text-red-500">Project not found</div>;
 
@@ -210,22 +262,34 @@ const AudioSubtitles = () => {
       {confirmModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4 space-y-4 border border-gray-700">
-            <h3 className="text-lg font-semibold text-white">Confirm Paid Voiceover Generation</h3>
+            <h3 className="text-lg font-semibold text-white">
+              {isVoiceoverConfirm ? 'Confirm Paid Voiceover Generation' : 'Confirm Paid Subtitle Generation'}
+            </h3>
             <div className="space-y-2 text-sm text-gray-300">
               <div className="flex justify-between">
                 <span className="text-gray-400">Provider:</span>
                 <span className="font-medium text-white">{confirmModal.estimate.provider_name}/{confirmModal.estimate.model_name}</span>
               </div>
+              {isVoiceoverConfirm && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Voice:</span>
+                  <span className="font-medium text-white">{selectedVoice || 'default'}</span>
+                </div>
+              )}
+              {isVoiceoverConfirm && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Characters:</span>
+                  <span className="font-medium text-white">{confirmModal.estimate.character_count}</span>
+                </div>
+              )}
+              {isSubtitleConfirm && confirmModal.estimate.audio_file_url && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Audio:</span>
+                  <span className="font-medium text-white text-xs truncate max-w-[200px]">{confirmModal.estimate.audio_file_url}</span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-gray-400">Voice:</span>
-                <span className="font-medium text-white">{selectedVoice || 'default'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Characters:</span>
-                <span className="font-medium text-white">{confirmModal.estimate.character_count}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Audio Jobs:</span>
+                <span className="text-gray-400">Jobs:</span>
                 <span className="font-medium text-white">{confirmModal.estimate.estimated_jobs}</span>
               </div>
               <div className="flex justify-between">
@@ -356,6 +420,26 @@ const AudioSubtitles = () => {
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-xl font-bold text-white">Subtitles</h2>
                         {voiceover && (
+                          <div className="flex items-center gap-3">
+                            {/* Transcription Provider Selection */}
+                            {transcriptionModels.length > 1 && (
+                              <select
+                                value={`${selectedTransProvider}:${selectedTransModel}`}
+                                onChange={(e) => {
+                                  const [p, m] = e.target.value.split(':');
+                                  setSelectedTransProvider(p);
+                                  setSelectedTransModel(m);
+                                }}
+                                className="text-sm border border-gray-600 rounded px-2 py-1.5 bg-gray-800 text-white"
+                                disabled={generatingSubtitles}
+                              >
+                                {transcriptionModels.map(m => (
+                                  <option key={`${m.provider_name}:${m.model_name}`} value={`${m.provider_name}:${m.model_name}`}>
+                                    {m.display_name} ({m.cost_hint || 'free'})
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                             <button
                                 onClick={handleGenerateSubtitles}
                                 disabled={generatingSubtitles || !voiceover}
@@ -363,6 +447,7 @@ const AudioSubtitles = () => {
                             >
                                 {generatingSubtitles ? 'Generating...' : (subtitles.length > 0 ? 'Regenerate Subtitles' : 'Generate Subtitles')}
                             </button>
+                          </div>
                         )}
                     </div>
 
@@ -376,6 +461,9 @@ const AudioSubtitles = () => {
                         </div>
                     ) : (
                         <div className="space-y-4">
+                            <div className="text-xs text-gray-400 mb-2">
+                              {subtitles.length} segment(s) &middot; {selectedTransProvider}/{selectedTransModel}
+                            </div>
                             {subtitles.map((sub, index) => (
                                 <div key={sub.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700 grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
                                     <div className="md:col-span-1 text-gray-500 font-mono text-sm pt-2">

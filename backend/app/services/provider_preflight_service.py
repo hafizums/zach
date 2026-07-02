@@ -37,7 +37,7 @@ def preflight_provider_model(db: Session, provider_name: str, model_name: str, m
 
     # 4. Special handling for openai api key
     import os
-    if provider_name == "openai" and modality in ("llm", "audio"):
+    if provider_name == "openai" and modality in ("llm", "audio", "transcription"):
         if not os.getenv("OPENAI_API_KEY"):
             return ProviderPreflightResult(
                 ok=False,
